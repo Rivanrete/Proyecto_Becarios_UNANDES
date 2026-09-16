@@ -20,6 +20,8 @@ class MainWindow(QMainWindow):
         self.usuario = usuario
         self.setWindowTitle("UNANDES • Registro de Becarios — Principal")
         self.setMinimumSize(640, 420)
+        # Maximizada (respeta la barra de tareas). main.py la muestra
+        # con showMaximized(); sin flags de fullscreen puro.
         self._build_ui()
 
     def _build_ui(self):
