@@ -29,16 +29,20 @@ def _abrir_formulario(panel: PanelControlWindow, becario_id: int | None):
 
 
 def _buscar_y_mostrar_ficha(panel: PanelControlWindow):
-    """HU-04: reutiliza el buscador del panel (Enter o botón Filtrar).
+    """HU-04: el Enter del buscador abre la ficha consolidada.
 
-    Con resultado abre la ficha consolidada; sin resultado notifica
-    con el componente propio (sin QMessageBox nativo).
+    El botón Filtrar NO dispara esto (solo abre su dropdown HU-06);
+    por eso un clic en Filtrar con texto vacío jamás muestra el aviso.
+    Con resultado abre la ficha; sin resultado notifica con el
+    componente propio (sin QMessageBox nativo). Texto vacío = no hace nada.
     """
-    texto = panel.txt_busqueda.text()
+    texto = panel.txt_busqueda.text().strip()
+    if not texto:
+        return
     encontrado = becario_service.buscar_becario(texto)
     if encontrado is None:
         mostrar_notificacion(
-            panel, f"No se encontraron resultados para '{texto.strip()}'.", tipo="error"
+            panel, f"No se encontraron resultados para '{texto}'.", tipo="error"
         )
         return
     ficha = becario_service.obtener_ficha_completa(encontrado.id)
@@ -68,9 +72,9 @@ def main() -> int:
     # doble clic en una fila lo abre en modo edición.
     principal.nuevo_becario_solicitado.connect(lambda: _abrir_formulario(principal, None))
     principal.becario_editar_solicitado.connect(lambda bid: _abrir_formulario(principal, bid))
-    # HU-04: el buscador existente abre la ficha (Enter o clic en Filtrar).
+    # HU-04: el Enter del buscador abre la ficha del becario.
+    # (El botón Filtrar solo abre su dropdown HU-06; no busca la ficha.)
     principal.txt_busqueda.returnPressed.connect(lambda: _buscar_y_mostrar_ficha(principal))
-    principal.btn_filtrar.clicked.connect(lambda: _buscar_y_mostrar_ficha(principal))
     principal.showMaximized()
     return app.exec()
 

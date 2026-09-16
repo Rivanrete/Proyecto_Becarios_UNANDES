@@ -144,6 +144,42 @@ def contar_becarios(db_path: Path = DB_PATH) -> int:
         conn.close()
 
 
+def contar_por_tipo_beca(db_path: Path = DB_PATH) -> dict[str, int]:
+    """Cantidad de becarios por tipo_beca tal cual está guardado."""
+    conn = get_connection(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT tipo_beca AS tipo, COUNT(*) AS n FROM becario GROUP BY tipo_beca"
+        ).fetchall()
+    finally:
+        conn.close()
+    return {fila["tipo"]: int(fila["n"]) for fila in filas}
+
+
+def listar_ids_sin_tipo(db_path: Path = DB_PATH) -> list[int]:
+    """Ids con tipo vacío (pre-HU-03), en orden de creación para reparto."""
+    conn = get_connection(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT id FROM becario WHERE tipo_beca IS NULL OR TRIM(tipo_beca) = '' ORDER BY id"
+        ).fetchall()
+    finally:
+        conn.close()
+    return [int(f["id"]) for f in filas]
+
+
+def asignar_tipo_beca(becario_id: int, tipo: str, db_path: Path = DB_PATH):
+    """Fija el tipo de un becario (backfill o futura HU-03 de reclasificar)."""
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            "UPDATE becario SET tipo_beca = ? WHERE id = ?", (tipo.strip(), becario_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def listar_todos(db_path: Path = DB_PATH) -> list[Becario]:
     conn = get_connection(db_path)
     try:

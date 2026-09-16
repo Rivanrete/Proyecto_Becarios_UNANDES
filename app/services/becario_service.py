@@ -149,32 +149,96 @@ def obtener_ficha_completa(becario_id: int, db_path: Path = DB_PATH) -> dict | N
     }
 
 
+def _asegurar_seguimiento(becario_id: int, periodo: str | None, db_path: Path = DB_PATH) -> SeguimientoBecario:
+    """Retorna el SeguimientoBecario de (becario, periodo), creándolo si falta.
+
+    Comportamiento definido HU-05: si no hay registro para el periodo
+    (gestion más reciente, o la indicada), se crea uno con valores por
+    defecto (0%, horas "No cumplió", materias "Sí") y se actualiza sobre él.
+    La acción nunca se bloquea por falta de registro.
+    """
+    gestion = (periodo or "").strip()
+    if not gestion or gestion == "—":
+        gestion = seguimiento_repository.obtener_ultima_gestion(db_path) or GESTION_EJEMPLO
+    seg = seguimiento_repository.obtener_por_becario(becario_id, gestion, db_path)
+    if seg is None:
+        seg = SeguimientoBecario(id=None, becario_id=becario_id, gestion=gestion)
+        seguimiento_repository.crear_seguimiento(seg, db_path)
+    return seg
+
+
+def actualizar_materias_en_orden(
+    becario_id: int, periodo: str | None, valor: bool, db_path: Path = DB_PATH
+) -> SeguimientoBecario:
+    """HU-05: guarda Sí/No de materias en el registro del periodo (existe o creado)."""
+    seg = _asegurar_seguimiento(becario_id, periodo, db_path)
+    seg.materias_en_orden = bool(valor)
+    return seguimiento_repository.actualizar(seg, db_path)
+
+
+def actualizar_horas_becarias(
+    becario_id: int, periodo: str | None, valor: bool, db_path: Path = DB_PATH
+) -> SeguimientoBecario:
+    """HU-05: guarda Cumplió/No cumplió de horas en el registro del periodo (existe o creado)."""
+    seg = _asegurar_seguimiento(becario_id, periodo, db_path)
+    seg.horas_becarias = bool(valor)
+    return seguimiento_repository.actualizar(seg, db_path)
+
+
+def actualizar_carpeta_cancelada(
+    becario_id: int, periodo: str | None, valor: bool, db_path: Path = DB_PATH
+) -> SeguimientoBecario:
+    """HU-05 ext.: guarda Sí/No de carpeta en el registro del periodo (existe o creado)."""
+    seg = _asegurar_seguimiento(becario_id, periodo, db_path)
+    seg.carpeta_cancelada = bool(valor)
+    return seguimiento_repository.actualizar(seg, db_path)
+
+
+def actualizar_carta_renovacion(
+    becario_id: int, periodo: str | None, valor: bool, db_path: Path = DB_PATH
+) -> SeguimientoBecario:
+    """HU-05 ext.: guarda Sí/No de carta en el registro del periodo (existe o creado)."""
+    seg = _asegurar_seguimiento(becario_id, periodo, db_path)
+    seg.carta_renovacion = bool(valor)
+    return seguimiento_repository.actualizar(seg, db_path)
+
+
 def listar_para_panel(db_path: Path = DB_PATH):
     """Filas del Panel de Control: (Becario, SeguimientoBecario o None)."""
     return seguimiento_repository.listar_para_panel(db_path)
 
 
+def contar_becarios_por_categoria(db_path: Path = DB_PATH) -> list[tuple[str, int]]:
+    """HU-06: [(categoria, cantidad)] para cada tipo del catálogo, con 0 incluidos."""
+    conteo = becario_repository.contar_por_tipo_beca(db_path)
+    return [
+        (t.nombre, conteo.get(t.nombre, 0))
+        for t in tipo_beca_repository.listar_todos(db_path)
+    ]
+
+
 # ---------------------------------------------------------------------------
-# Datos de ejemplo para desarrollo (seed idempotente, 6 carreras × 2-3).
+# Datos de ejemplo para desarrollo (seed idempotente, 6 carreras × 2-3,
+# repartidos también entre los 6 tipos de beca para probar el filtro).
 # Sirven para probar el listado y el futuro filtro por carrera.
 # ---------------------------------------------------------------------------
 _DATOS_EJEMPLO = [
-    # (nombres, apellidos, ci, codigo, carrera, contacto, %ant, horas, mat, carpeta, carta)
-    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "100%", True, True, True, True),
-    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "0%", False, False, False, False),
-    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "50%", True, False, False, True),
-    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "50%", True, True, False, True),
-    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "100%", True, True, True, False),
-    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "0%", False, True, False, False),
-    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "100%", False, True, False, False),
-    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "50%", True, True, True, True),
-    ("Miguel", "Huanca Copa", "7452309", "25034", "GAS", "71234509", "50%", True, False, True, True),
-    ("Paola", "Ríos Fernández", "6981342", "25108", "GAS", "71234510", "100%", True, True, True, True),
-    ("Luis", "Copa Ticona", "8234567", "25241", "GAS", "71234511", "0%", False, False, False, True),
-    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "100%", True, True, False, True),
-    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "50%", False, True, False, False),
-    ("Carolina", "Paredes Flores", "7981234", "27045", "CON", "71234514", "100%", True, True, True, True),
-    ("Javier", "Ticona Ríos", "6456789", "27190", "CON", "71234515", "0%", False, False, False, False),
+    # (nombres, apellidos, ci, codigo, carrera, contacto, tipo, %ant, horas, mat, carpeta, carta)
+    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Excelencia", "100%", True, True, True, True),
+    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Económica Social", "0%", False, False, False, False),
+    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Convenio", "50%", True, False, False, True),
+    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Plantel Administrativo", "50%", True, True, False, True),
+    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Directorio", "100%", True, True, True, False),
+    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Ministerial", "0%", False, True, False, False),
+    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Excelencia", "100%", False, True, False, False),
+    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Económica Social", "50%", True, True, True, True),
+    ("Miguel", "Huanca Copa", "7452309", "25034", "GAS", "71234509", "Convenio", "50%", True, False, True, True),
+    ("Paola", "Ríos Fernández", "6981342", "25108", "GAS", "71234510", "Plantel Administrativo", "100%", True, True, True, True),
+    ("Luis", "Copa Ticona", "8234567", "25241", "GAS", "71234511", "Directorio", "0%", False, False, False, True),
+    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Ministerial", "100%", True, True, False, True),
+    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Excelencia", "50%", False, True, False, False),
+    ("Carolina", "Paredes Flores", "7981234", "27045", "CON", "71234514", "Económica Social", "100%", True, True, True, True),
+    ("Javier", "Ticona Ríos", "6456789", "27190", "CON", "71234515", "Convenio", "0%", False, False, False, False),
 ]
 
 
@@ -182,11 +246,12 @@ def asegurar_datos_ejemplo(db_path: Path = DB_PATH) -> int:
     """Inserta los ejemplos si la tabla está vacía. Retorna cuántos insertó."""
     if becario_repository.contar_becarios(db_path) > 0:
         return 0
-    for (nombres, apellidos, ci, codigo, carrera, contacto,
+    for (nombres, apellidos, ci, codigo, carrera, contacto, tipo_beca,
          porc_ant, horas, mat, carpeta, carta) in _DATOS_EJEMPLO:
         becario = becario_repository.insertar_becario(
             Becario(id=None, nombres=nombres, apellidos=apellidos, ci=ci,
-                    codigo_estudiante=codigo, carrera=carrera, contacto=contacto),
+                    codigo_estudiante=codigo, carrera=carrera, contacto=contacto,
+                    tipo_beca=tipo_beca),
             db_path,
         )
         seguimiento_repository.crear_seguimiento(
@@ -197,3 +262,18 @@ def asegurar_datos_ejemplo(db_path: Path = DB_PATH) -> int:
             db_path,
         )
     return len(_DATOS_EJEMPLO)
+
+
+def completar_tipos_vacios(db_path: Path = DB_PATH) -> int:
+    """Backfill puntual HU-06: becarios pre-HU-03 con tipo vacío ('').
+
+    Les asigna tipos del catálogo en reparto rotativo por orden de id.
+    No toca a los que ya tienen tipo. Idempotente (0 si no hay vacíos).
+    """
+    tipos = [t.nombre for t in tipo_beca_repository.listar_activos(db_path)]
+    if not tipos:
+        return 0
+    ids = becario_repository.listar_ids_sin_tipo(db_path)
+    for i, becario_id in enumerate(ids):
+        becario_repository.asignar_tipo_beca(becario_id, tipos[i % len(tipos)], db_path)
+    return len(ids)

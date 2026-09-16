@@ -10,8 +10,11 @@ DocumentoBecario en ninguna parte de esta ficha. No es un olvido.
 
 Se abre como modal integrado (frameless + overlay + animación) igual que
 el resto de modales, vía overlay.ejecutar_con_overlay().
+
+HU-05: los badges de Horas Becarias y Materias en Orden son clickeables
+y alternan su valor guardándolo en el periodo vigente.
 """
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QEvent
 from PySide6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -23,7 +26,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app.services import becario_service
 from app.ui import theme
+from app.ui.notificacion import mostrar_notificacion
 from app.ui.panel_control_window import ESTILO_BADGE_ROJO, ESTILO_BADGE_VERDE
 
 ESTILO_BADGE_NEUTRO = (
@@ -50,6 +55,7 @@ class FichaBecarioWindow(QDialog):
         if not ficha or ficha.get("becario") is None:
             raise ValueError("La ficha no existe.")
         self.ficha = ficha
+        self._toggle_info: dict = {}
         self.setWindowTitle("Ficha del Becario")
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -119,17 +125,17 @@ class FichaBecarioWindow(QDialog):
             form_seg.addRow("% Anterior:", self._dato(seg.porcentaje_anterior, card))
             form_seg.addRow("Gestión:", self._dato(seg.gestion, card))
             form_seg.addRow("Horas Becarias:",
-                            self._badge("Cumplió" if seg.horas_becarias else "No cumplió",
-                                        ESTILO_BADGE_VERDE if seg.horas_becarias else ESTILO_BADGE_ROJO, card))
+                            self._badge_toggle("Cumplió" if seg.horas_becarias else "No cumplió",
+                                               seg.horas_becarias, "horas_becarias", card))
             form_seg.addRow("Materias en Orden:",
-                            self._badge("Sí" if seg.materias_en_orden else "No",
-                                        ESTILO_BADGE_VERDE if seg.materias_en_orden else ESTILO_BADGE_ROJO, card))
+                            self._badge_toggle("Sí" if seg.materias_en_orden else "No",
+                                               seg.materias_en_orden, "materias_en_orden", card))
             form_seg.addRow("Carpeta Cancelada:",
-                            self._badge("Sí" if seg.carpeta_cancelada else "No",
-                                        ESTILO_BADGE_VERDE if seg.carpeta_cancelada else ESTILO_BADGE_ROJO, card))
+                            self._badge_toggle("Sí" if seg.carpeta_cancelada else "No",
+                                               seg.carpeta_cancelada, "carpeta_cancelada", card))
             form_seg.addRow("Carta Renovación:",
-                            self._badge("Sí" if seg.carta_renovacion else "No",
-                                        ESTILO_BADGE_VERDE if seg.carta_renovacion else ESTILO_BADGE_ROJO, card))
+                            self._badge_toggle("Sí" if seg.carta_renovacion else "No",
+                                               seg.carta_renovacion, "carta_renovacion", card))
             layout.addLayout(form_seg)
 
         layout.addWidget(self._seccion("Registro académico"))
@@ -162,6 +168,56 @@ class FichaBecarioWindow(QDialog):
         etiqueta = QLabel(texto)
         etiqueta.setStyleSheet(estilo)
         return etiqueta
+
+    def _badge_toggle(self, texto: str, positivo: bool, campo: str, padre) -> QLabel:
+        """Badge clickeable HU-05: mano, tooltip y alternancia al clic."""
+        etiqueta = self._badge(
+            texto, ESTILO_BADGE_VERDE if positivo else ESTILO_BADGE_ROJO, padre)
+        etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
+        etiqueta.setToolTip("Clic para cambiar")
+        etiqueta.installEventFilter(self)
+        self._toggle_info[etiqueta] = {"campo": campo, "valor": positivo}
+        return etiqueta
+
+    def eventFilter(self, obj, event):
+        if (event.type() == QEvent.Type.MouseButtonRelease
+                and obj in self._toggle_info
+                and event.button() == Qt.MouseButton.LeftButton):
+            self._alternar_campo(obj)
+            return True
+        return super().eventFilter(obj, event)
+
+    def _alternar_campo(self, etiqueta: QLabel):
+        """Alterna el badge y guarda en BD con feedback inmediato (sin recargar)."""
+        info = self._toggle_info.get(etiqueta)
+        seg = self.ficha["seguimiento"]
+        if info is None or seg is None:
+            return
+        nuevo = not info["valor"]
+        try:
+            if info["campo"] == "horas_becarias":
+                becario_service.actualizar_horas_becarias(seg.becario_id, seg.gestion, nuevo)
+                seg.horas_becarias = nuevo
+                texto = "Cumplió" if nuevo else "No cumplió"
+            elif info["campo"] == "materias_en_orden":
+                becario_service.actualizar_materias_en_orden(seg.becario_id, seg.gestion, nuevo)
+                seg.materias_en_orden = nuevo
+                texto = "Sí" if nuevo else "No"
+            elif info["campo"] == "carpeta_cancelada":
+                becario_service.actualizar_carpeta_cancelada(seg.becario_id, seg.gestion, nuevo)
+                seg.carpeta_cancelada = nuevo
+                texto = "Sí" if nuevo else "No"
+            else:
+                becario_service.actualizar_carta_renovacion(seg.becario_id, seg.gestion, nuevo)
+                seg.carta_renovacion = nuevo
+                texto = "Sí" if nuevo else "No"
+        except Exception as e:
+            mostrar_notificacion(self, f"No se pudo guardar el cambio: {e}", tipo="error")
+            return
+        info["valor"] = nuevo
+        etiqueta.setText(texto)
+        etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if nuevo else ESTILO_BADGE_ROJO)
 
     def _apply_style(self):
         self.setStyleSheet(f"""

@@ -44,6 +44,24 @@ def obtener_por_becario(becario_id: int, gestion: str, db_path: Path = DB_PATH) 
     return _mapear(fila) if fila is not None else None
 
 
+def actualizar(seg: SeguimientoBecario, db_path: Path = DB_PATH) -> SeguimientoBecario:
+    """Actualiza el registro existente de (becario_id, gestion)."""
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            "UPDATE seguimiento_becario SET porcentaje_anterior = ?, porcentaje_gestion = ?,"
+            " horas_becarias = ?, materias_en_orden = ?, carpeta_cancelada = ?,"
+            " carta_renovacion = ? WHERE becario_id = ? AND gestion = ?",
+            (seg.porcentaje_anterior, seg.porcentaje_gestion, int(seg.horas_becarias),
+             int(seg.materias_en_orden), int(seg.carpeta_cancelada),
+             int(seg.carta_renovacion), seg.becario_id, seg.gestion),
+        )
+        conn.commit()
+        return seg
+    finally:
+        conn.close()
+
+
 def obtener_ultima_gestion(db_path: Path = DB_PATH) -> Optional[str]:
     """Retorna la gestión más reciente con seguimientos, o None si no hay."""
     conn = get_connection(db_path)

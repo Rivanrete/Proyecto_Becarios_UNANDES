@@ -14,7 +14,7 @@ en código, nombres y apellidos, sin importar mayúsculas ni tildes.
 """
 import unicodedata
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QEvent, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -36,6 +37,7 @@ from app.models.usuario import Usuario
 from app.services import becario_service
 from app.services.auth_service import SesionActual
 from app.ui import theme
+from app.ui.notificacion import mostrar_notificacion
 
 COLUMNAS = [
     "N.",
@@ -90,6 +92,8 @@ class PanelControlWindow(QMainWindow):
         self.setMinimumSize(900, 600)
         self._ids_fila: list[int] = []
         self._filas_completas: list = []
+        self._toggle_info: dict = {}
+        self._categoria_filtro: str | None = None
         self._build_ui()
         self._apply_style()
         self.refrescar()
@@ -135,8 +139,8 @@ class PanelControlWindow(QMainWindow):
         barra_busqueda.addLayout(fila_busqueda, 1)
         self.btn_filtrar = QPushButton("Filtrar")
         self.btn_filtrar.setObjectName("filtrar")
-        # Sin funcionalidad todavía; HU futura de filtros avanzados.
-        self.btn_filtrar.clicked.connect(self._filtrar_pendiente)
+        # HU-06 (+ adelanto HU-07): despliega categorías con conteo y filtra.
+        self.btn_filtrar.clicked.connect(self._mostrar_menu_filtrar)
         barra_busqueda.addWidget(self.btn_filtrar)
         layout_contenido.addLayout(barra_busqueda)
 
@@ -195,12 +199,14 @@ class PanelControlWindow(QMainWindow):
 
     # -- datos (fuente real: JOIN becario + seguimiento_becario) ------------
     def refrescar(self):
-        """Recarga la tabla desde la base de datos (respeta el filtro escrito)."""
+        """Recarga la tabla desde la base de datos (respeta los filtros)."""
         self._filas_completas = [
             (b.id, b.carrera, b.apellidos, b.nombres, b.codigo_estudiante,
              seg if seg is not None else SeguimientoBecario(
                  id=None, becario_id=b.id, gestion="—"),
-             seg.gestion if seg is not None else "—")
+             seg.gestion if seg is not None else "—",
+             seg,
+             b.tipo_beca)
             for b, seg in becario_service.listar_para_panel()
         ]
         self.aplicar_filtro(self.txt_busqueda.text())
@@ -210,30 +216,36 @@ class PanelControlWindow(QMainWindow):
         self.aplicar_filtro(texto)
 
     def aplicar_filtro(self, texto: str):
-        """Muestra solo filas cuyo código, nombres o apellidos contengan el texto.
+        """Aplica texto (contiene) Y categoría a la vez: solo pasa la intersección.
 
-        Vacío = todas las filas. Sin coincidencias = tabla vacía + aviso.
+        Vacío + "Todas" = todo. "Todas" limpia solo la categoría y conserva
+        el texto escrito.
         """
         consulta = _normalizar_texto(texto.strip())
-        if not consulta:
+        categoria = self._categoria_filtro
+        if not consulta and categoria is None:
             self.cargar_seguimientos(list(self._filas_completas))
             return
         filtradas = [
             fila for fila in self._filas_completas
-            if consulta in _normalizar_texto(fila[4])
-            or consulta in _normalizar_texto(fila[3])
-            or consulta in _normalizar_texto(fila[2])
-            or consulta in _normalizar_texto(f"{fila[3]} {fila[2]}")
-            or consulta in _normalizar_texto(f"{fila[2]} {fila[3]}")
+            if (not consulta
+                or consulta in _normalizar_texto(fila[4])
+                or consulta in _normalizar_texto(fila[3])
+                or consulta in _normalizar_texto(fila[2])
+                or consulta in _normalizar_texto(f"{fila[3]} {fila[2]}")
+                or consulta in _normalizar_texto(f"{fila[2]} {fila[3]}"))
+            and (categoria is None or fila[8] == categoria)
         ]
         self.cargar_seguimientos(filtradas)
 
     def cargar_seguimientos(self, filas):
         """Puebla la tabla. `filas`: (becario_id, carrera, apellidos,
-        nombres, codigo, SeguimientoBecario, gestion)."""
+        nombres, codigo, SeguimientoBecario a mostrar, gestion, SeguimientoBecario
+        real o None si aún no tiene registro, tipo_beca)."""
         self.tabla.setRowCount(0)
         self._ids_fila = []
-        for i, (becario_id, carrera, apellidos, nombres, codigo, seg, gestion) in enumerate(filas, start=1):
+        self._toggle_info = {}
+        for i, (becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo) in enumerate(filas, start=1):
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
             self._ids_fila.append(becario_id)
@@ -244,14 +256,18 @@ class PanelControlWindow(QMainWindow):
             self._celda_texto(fila, 4, codigo)
             self._celda_texto(fila, 5, seg.porcentaje_anterior)
             self._celda_texto(fila, 6, gestion)
-            self._celda_badge(fila, 7, "Cumplió" if seg.horas_becarias else "No cumplió",
-                              positivo=seg.horas_becarias)
-            self._celda_badge(fila, 8, "Sí" if seg.materias_en_orden else "No",
-                              positivo=seg.materias_en_orden)
-            self._celda_badge(fila, 9, "Sí" if seg.carpeta_cancelada else "No",
-                              positivo=seg.carpeta_cancelada)
-            self._celda_badge(fila, 10, "Sí" if seg.carta_renovacion else "No",
-                              positivo=seg.carta_renovacion)
+            self._celda_badge_toggle(fila, 7, "Cumplió" if seg.horas_becarias else "No cumplió",
+                                     seg.horas_becarias, becario_id, "horas_becarias",
+                                     real.gestion if real is not None else None)
+            self._celda_badge_toggle(fila, 8, "Sí" if seg.materias_en_orden else "No",
+                                     seg.materias_en_orden, becario_id, "materias_en_orden",
+                                     real.gestion if real is not None else None)
+            self._celda_badge_toggle(fila, 9, "Sí" if seg.carpeta_cancelada else "No",
+                                     seg.carpeta_cancelada, becario_id, "carpeta_cancelada",
+                                     real.gestion if real is not None else None)
+            self._celda_badge_toggle(fila, 10, "Sí" if seg.carta_renovacion else "No",
+                                     seg.carta_renovacion, becario_id, "carta_renovacion",
+                                     real.gestion if real is not None else None)
         if self.tabla.rowCount() == 0:
             self._fila_sin_resultados()
 
@@ -284,8 +300,112 @@ class PanelControlWindow(QMainWindow):
         )
         self.tabla.setCellWidget(fila, columna, etiqueta)
 
-    def _filtrar_pendiente(self):
-        """Hook visual. La HU de filtros avanzados lo implementará."""
+    def _celda_badge_toggle(self, fila: int, columna: int, texto: str, positivo: bool,
+                            becario_id: int, campo: str, gestion: str | None):
+        """Badge clickeable HU-05: mano, tooltip y alternancia al clic."""
+        etiqueta = QLabel(texto)
+        etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        etiqueta.setStyleSheet(
+            ESTILO_BADGE_VERDE if positivo else ESTILO_BADGE_ROJO
+        )
+        etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
+        etiqueta.setToolTip("Clic para cambiar")
+        etiqueta.installEventFilter(self)
+        self._toggle_info[etiqueta] = {
+            "becario_id": becario_id, "campo": campo,
+            "valor": positivo, "gestion": gestion,
+        }
+        self.tabla.setCellWidget(fila, columna, etiqueta)
+
+    def eventFilter(self, obj, event):
+        if (event.type() == QEvent.Type.MouseButtonRelease
+                and obj in self._toggle_info
+                and event.button() == Qt.MouseButton.LeftButton):
+            self._alternar_campo(obj)
+            return True
+        return super().eventFilter(obj, event)
+
+    def _alternar_campo(self, etiqueta: QLabel):
+        """Alterna el badge y guarda en BD con feedback inmediato (sin recargar)."""
+        info = self._toggle_info.get(etiqueta)
+        if info is None:
+            return
+        nuevo = not info["valor"]
+        try:
+            if info["campo"] == "horas_becarias":
+                becario_service.actualizar_horas_becarias(
+                    info["becario_id"], info["gestion"], nuevo)
+                texto = "Cumplió" if nuevo else "No cumplió"
+            elif info["campo"] == "materias_en_orden":
+                becario_service.actualizar_materias_en_orden(
+                    info["becario_id"], info["gestion"], nuevo)
+                texto = "Sí" if nuevo else "No"
+            elif info["campo"] == "carpeta_cancelada":
+                becario_service.actualizar_carpeta_cancelada(
+                    info["becario_id"], info["gestion"], nuevo)
+                texto = "Sí" if nuevo else "No"
+            else:
+                becario_service.actualizar_carta_renovacion(
+                    info["becario_id"], info["gestion"], nuevo)
+                texto = "Sí" if nuevo else "No"
+        except Exception as e:
+            mostrar_notificacion(self, f"No se pudo guardar el cambio: {e}", tipo="error")
+            return
+        info["valor"] = nuevo
+        etiqueta.setText(texto)
+        etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if nuevo else ESTILO_BADGE_ROJO)
+
+    def _mostrar_menu_filtrar(self):
+        """HU-06 (conteo) + funcionalidad adelantada de HU-07 (filtro por categoría).
+
+        El botón "Filtrar" cubre ambos: el dropdown lista cada categoría con
+        su conteo real, y elegir una filtra la tabla (combinado con el texto).
+        """
+        menu = self._construir_menu_filtrar()
+        menu.exec(self.btn_filtrar.mapToGlobal(self.btn_filtrar.rect().bottomLeft()))
+
+    def _construir_menu_filtrar(self) -> QMenu:
+        """Arma el dropdown con conteos frescos de la BD (se recalcula al abrir).
+
+        Regla HU-06: la suma por categoría siempre cuadra con "Todas".
+        Si algún becario queda sin tipo (''), no desaparece del conteo:
+        aparece la opción "Sin categoría (N)" que filtra tipo_beca vacío.
+        """
+        menu = QMenu(self)
+        menu.setObjectName("menuFiltrar")
+        conteos = becario_service.contar_becarios_por_categoria()
+        total = len(self._filas_completas)  # todas las filas, incluso sin categoría
+        accion_todas = menu.addAction(f"Todas las categorías ({total})")
+        accion_todas.setCheckable(True)
+        accion_todas.setChecked(self._categoria_filtro is None)
+        accion_todas.triggered.connect(lambda: self._elegir_categoria(None))
+        menu.addSeparator()
+        for categoria, cantidad in conteos:
+            accion = menu.addAction(f"{categoria} ({cantidad})")
+            accion.setCheckable(True)
+            accion.setChecked(self._categoria_filtro == categoria)
+            accion.triggered.connect(
+                lambda checked=False, c=categoria: self._elegir_categoria(c)
+            )
+        sin_categoria = total - sum(cantidad for _, cantidad in conteos)
+        if sin_categoria > 0:
+            accion_sin = menu.addAction(f"Sin categoría ({sin_categoria})")
+            accion_sin.setCheckable(True)
+            accion_sin.setChecked(self._categoria_filtro == "")
+            accion_sin.triggered.connect(lambda: self._elegir_categoria(""))
+        return menu
+
+    def _elegir_categoria(self, categoria: str | None):
+        """Fija el filtro de categoría ("Todas" lo limpia, conserva el texto)."""
+        self._categoria_filtro = categoria
+        if categoria is None:
+            etiqueta = "Filtrar"
+        elif categoria == "":
+            etiqueta = "Filtrar: Sin categoría"
+        else:
+            etiqueta = f"Filtrar: {categoria}"
+        self.btn_filtrar.setText(etiqueta)
+        self.aplicar_filtro(self.txt_busqueda.text())
 
     def _abrir_editar(self, fila: int, _columna: int):
         """Doble clic en una fila: solicita edición del becario (HU-02)."""
@@ -328,6 +448,14 @@ class PanelControlWindow(QMainWindow):
                 font-size: 13px; font-weight: 700;
                 border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px 20px;
             }}
+            QMenu#menuFiltrar {{
+                background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_OSCURO};
+                border: 1px solid {theme.BORDE_SUAVE}; padding: 6px;
+            }}
+            QMenu#menuFiltrar::item {{ padding: 8px 24px 8px 28px; border-radius: 6px; }}
+            QMenu#menuFiltrar::item:selected {{ background-color: #ecfccb; }}
+            QMenu#menuFiltrar::separator {{ height: 1px; background: #e2e8f0; margin: 6px 10px; }}
+            QMenu#menuFiltrar::indicator {{ width: 14px; height: 14px; }}
             QTableWidget {{
                 background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_OSCURO};
                 gridline-color: #e2e8f0; font-size: 12px;
