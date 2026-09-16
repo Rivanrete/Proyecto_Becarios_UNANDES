@@ -56,7 +56,10 @@ def _normalizar(datos: dict) -> dict:
 def _validar_requeridos(datos: dict, db_path: Path = DB_PATH):
     faltantes = [c for c in CAMPOS_REQUERIDOS if not datos[c]]
     if faltantes:
-        raise ValueError(f"Faltan datos obligatorios: {', '.join(faltantes)}.")
+        # Solo texto visible al usuario: "codigo_estudiante" se muestra como "código".
+        # (Variables, columnas y lógica de validación no cambian.)
+        visibles = ["código" if c == "codigo_estudiante" else c for c in faltantes]
+        raise ValueError(f"Faltan datos obligatorios: {', '.join(visibles)}.")
     siglas = [c.sigla for c in carrera_repository.listar_activos(db_path)]
     if datos["carrera"] not in siglas:
         raise ValueError(f"Carrera no válida. Use una de: {', '.join(siglas)}.")

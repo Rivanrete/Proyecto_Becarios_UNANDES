@@ -8,8 +8,9 @@ local). NO guarda la contraseña ni mantiene sesión.
 """
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QSettings
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QSize, Qt, QSettings
+from PySide6.QtGui import QIcon, QImage, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -41,6 +42,43 @@ def _ruta_escudo() -> Path | None:
         except OSError:
             continue
     return None
+
+
+# Ojo abierto / cerrado estilo outline monocromático (SVG en línea, sin
+# librerías externas; se renderiza con QtSvg del propio PySide6).
+# Color = texto secundario de la paleta sobre la tarjeta.
+_COLOR_OJO = "#b9c2d8"
+_OJO_ABIERTO = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"'
+    ' viewBox="0 0 24 24" fill="none" stroke="' + _COLOR_OJO + '"'
+    ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>'
+    '<circle cx="12" cy="12" r="3"/></svg>'
+)
+_OJO_CERRADO = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"'
+    ' viewBox="0 0 24 24" fill="none" stroke="' + _COLOR_OJO + '"'
+    ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8'
+    'a18.45 18.45 0 0 1 5.06-5.94"/>'
+    '<path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8'
+    'a18.5 18.5 0 0 1-2.16 3.19"/>'
+    '<path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/>'
+    '<line x1="1" y1="1" x2="23" y2="23"/></svg>'
+)
+
+
+def _icono_ojo(abierto: bool) -> QIcon:
+    """Renderiza el SVG del ojo a QIcon (24px, monocromático de paleta)."""
+    renderer = QSvgRenderer(bytearray((_OJO_ABIERTO if abierto else _OJO_CERRADO).encode("utf-8")))
+    imagen = QImage(24, 24, QImage.Format.Format_ARGB32)
+    imagen.fill(0)
+    pintor = QPainter(imagen)
+    try:
+        renderer.render(pintor)
+    finally:
+        pintor.end()
+    return QIcon(QPixmap.fromImage(imagen))
 
 
 class LoginWindow(QDialog):
@@ -138,7 +176,8 @@ class LoginWindow(QDialog):
         self.txt_clave.setEchoMode(QLineEdit.EchoMode.Password)
         self.btn_mostrar = QToolButton(card)
         self.btn_mostrar.setObjectName("mostrar")
-        self.btn_mostrar.setText("👁")
+        self.btn_mostrar.setIcon(_icono_ojo(True))
+        self.btn_mostrar.setIconSize(QSize(20, 20))
         self.btn_mostrar.setCheckable(True)
         self.btn_mostrar.setToolTip("Mostrar / ocultar contraseña")
         self.btn_mostrar.toggled.connect(self._alternar_clave)
@@ -190,6 +229,7 @@ class LoginWindow(QDialog):
         self.txt_clave.setEchoMode(
             QLineEdit.EchoMode.Normal if mostrar else QLineEdit.EchoMode.Password
         )
+        self.btn_mostrar.setIcon(_icono_ojo(not mostrar))
 
     def _on_login(self):
         """Delegación total a la capa de negocio. Sin validación en la UI."""
