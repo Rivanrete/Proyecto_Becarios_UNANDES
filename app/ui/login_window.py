@@ -23,13 +23,14 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from app import rutas
 from app.services import auth_service
 from app.ui import theme
 
 ORG = "UNANDES"
 APP = "RegistroBecarios"
 KEY_USUARIO = "usuario_recordado"
-_DIR_ASSETS = Path(__file__).resolve().parents[1] / "assets"
+_DIR_ASSETS = rutas.assets_dir()
 
 
 def _ruta_escudo() -> Path | None:

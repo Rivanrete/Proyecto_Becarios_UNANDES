@@ -6,8 +6,10 @@ Control maximizado. Sin sesión no se abre el panel (bloqueo de bypass).
 """
 import sys
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
+from app import rutas
 from app.persistence.database import init_db
 from app.services import becario_service
 from app.services.auth_service import SesionActual, asegurar_credencial_unica
@@ -57,6 +59,9 @@ def main() -> int:
     asegurar_credencial_unica()
 
     app = QApplication(sys.argv)
+    icono = rutas.assets_dir() / "escudo_unandes.ico"
+    if icono.is_file():
+        app.setWindowIcon(QIcon(str(icono)))
 
     login = LoginWindow()
     # Sin showMaximized() previo: el showEvent del login lo maximiza
