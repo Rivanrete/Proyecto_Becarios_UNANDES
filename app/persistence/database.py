@@ -7,7 +7,9 @@ está vacía, inserta el seed de pruebas (prueba / 1234 hasheada).
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parents[2] / "data" / "becarios.db"
+from app import rutas
+
+DB_PATH = rutas.datos_dir() / "becarios.db"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS usuarios (
