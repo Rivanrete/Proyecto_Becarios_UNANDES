@@ -84,10 +84,15 @@ def init_db(db_path: Path = DB_PATH) -> None:
     # Seeds idempotentes. Imports diferidos para evitar dependencias
     # circulares database -> services.
     from app.services.auth_service import asegurar_credencial_unica
-    from app.services.becario_service import asegurar_datos_ejemplo, completar_tipos_vacios
+    from app.services.becario_service import (
+        asegurar_datos_ejemplo,
+        completar_tipos_vacios,
+        distribuir_estados_ejemplo,
+    )
     from app.services.catalogo_service import asegurar_catalogos
 
     asegurar_credencial_unica(db_path=db_path)
     asegurar_catalogos(db_path=db_path)
     asegurar_datos_ejemplo(db_path=db_path)
     completar_tipos_vacios(db_path=db_path)
+    distribuir_estados_ejemplo(db_path=db_path)

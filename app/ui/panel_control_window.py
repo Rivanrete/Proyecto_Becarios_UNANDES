@@ -15,7 +15,7 @@ en código, nombres y apellidos, sin importar mayúsculas ni tildes.
 import unicodedata
 
 from PySide6.QtCore import Qt, QEvent, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QCursor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -51,7 +51,26 @@ COLUMNAS = [
     "Materias en Orden",
     "Carpeta de Becas Cancelada",
     "Carta de Renovación Presentada",
+    "Estado",
 ]
+
+# Índices fijos: 9 y 10 son los encabezados largos que absorben el sobrante.
+COLUMNAS_CONTENIDO = (0, 1, 2, 3, 4, 5, 6, 7, 8, 11)
+COLUMNAS_ESTIRADAS = (9, 10)
+
+ESTILO_BADGE_NEUTRO = (
+    "background-color: #fef3c7; color: #92400e; "
+    "border-radius: 10px; padding: 3px 12px; font-weight: 700;"
+)
+
+
+def estilo_estado(estado: str) -> str:
+    """Verde Activo, rojo Baja/Inactivo, ámbar el resto (igual que la ficha)."""
+    if estado == "Activo":
+        return ESTILO_BADGE_VERDE
+    if estado == "Baja/Inactivo":
+        return ESTILO_BADGE_ROJO
+    return ESTILO_BADGE_NEUTRO
 
 TEXTO_BUSQUEDA = "Buscar por código Ej: 23718 o por nombre Beymar Condori Quispe"
 TEXTO_SIN_RESULTADOS = "Ninguna coincidencia"
@@ -93,6 +112,7 @@ class PanelControlWindow(QMainWindow):
         self._ids_fila: list[int] = []
         self._filas_completas: list = []
         self._toggle_info: dict = {}
+        self._estado_labels: dict = {}
         self._categoria_filtro: str | None = None
         self._build_ui()
         self._apply_style()
@@ -149,13 +169,13 @@ class PanelControlWindow(QMainWindow):
         self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla.verticalHeader().setVisible(False)
-        # Reparto híbrido: columnas 0-8 al tamaño de su contenido y las dos
-        # últimas (encabezados largos) en Stretch para absorber todo el
-        # ancho sobrante. Así no hay franja vacía ni encabezados cortados.
+        # Reparto híbrido: columnas de contenido a su medida y las dos
+        # de encabezado largo (9 y 10) en Stretch para absorber el sobrante.
+        # Así no hay franja vacía ni encabezados cortados.
         cabecera = self.tabla.horizontalHeader()
-        for i in range(len(COLUMNAS) - 2):
+        for i in COLUMNAS_CONTENIDO:
             cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        for i in (len(COLUMNAS) - 2, len(COLUMNAS) - 1):
+        for i in COLUMNAS_ESTIRADAS:
             cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch)
         # Doble clic abre el becario en modo edición (HU-02, CA-1).
         self.tabla.cellDoubleClicked.connect(self._abrir_editar)
@@ -206,7 +226,8 @@ class PanelControlWindow(QMainWindow):
                  id=None, becario_id=b.id, gestion="—"),
              seg.gestion if seg is not None else "—",
              seg,
-             b.tipo_beca)
+             b.tipo_beca,
+             b.estado)
             for b, seg in becario_service.listar_para_panel()
         ]
         self.aplicar_filtro(self.txt_busqueda.text())
@@ -216,8 +237,9 @@ class PanelControlWindow(QMainWindow):
         self.aplicar_filtro(texto)
 
     def aplicar_filtro(self, texto: str):
-        """Aplica texto (contiene) Y categoría a la vez: solo pasa la intersección.
+        """Aplica texto Y categoría a la vez: solo pasa la intersección.
 
+        El código filtra por "empieza con"; nombres/apellidos por "contiene".
         Vacío + "Todas" = todo. "Todas" limpia solo la categoría y conserva
         el texto escrito.
         """
@@ -229,7 +251,7 @@ class PanelControlWindow(QMainWindow):
         filtradas = [
             fila for fila in self._filas_completas
             if (not consulta
-                or consulta in _normalizar_texto(fila[4])
+                or _normalizar_texto(fila[4]).startswith(consulta)
                 or consulta in _normalizar_texto(fila[3])
                 or consulta in _normalizar_texto(fila[2])
                 or consulta in _normalizar_texto(f"{fila[3]} {fila[2]}")
@@ -241,11 +263,12 @@ class PanelControlWindow(QMainWindow):
     def cargar_seguimientos(self, filas):
         """Puebla la tabla. `filas`: (becario_id, carrera, apellidos,
         nombres, codigo, SeguimientoBecario a mostrar, gestion, SeguimientoBecario
-        real o None si aún no tiene registro, tipo_beca)."""
+        real o None si aún no tiene registro, tipo_beca, estado)."""
         self.tabla.setRowCount(0)
         self._ids_fila = []
         self._toggle_info = {}
-        for i, (becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo) in enumerate(filas, start=1):
+        self._estado_labels = {}
+        for i, (becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo, estado) in enumerate(filas, start=1):
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
             self._ids_fila.append(becario_id)
@@ -268,6 +291,7 @@ class PanelControlWindow(QMainWindow):
             self._celda_badge_toggle(fila, 10, "Sí" if seg.carta_renovacion else "No",
                                      seg.carta_renovacion, becario_id, "carta_renovacion",
                                      real.gestion if real is not None else None)
+            self._celda_badge_estado(fila, 11, becario_id, estado)
         if self.tabla.rowCount() == 0:
             self._fila_sin_resultados()
 
@@ -319,10 +343,13 @@ class PanelControlWindow(QMainWindow):
 
     def eventFilter(self, obj, event):
         if (event.type() == QEvent.Type.MouseButtonRelease
-                and obj in self._toggle_info
                 and event.button() == Qt.MouseButton.LeftButton):
-            self._alternar_campo(obj)
-            return True
+            if obj in self._toggle_info:
+                self._alternar_campo(obj)
+                return True
+            if obj in self._estado_labels:
+                self._mostrar_menu_estado(obj)
+                return True
         return super().eventFilter(obj, event)
 
     def _alternar_campo(self, etiqueta: QLabel):
@@ -354,6 +381,47 @@ class PanelControlWindow(QMainWindow):
         info["valor"] = nuevo
         etiqueta.setText(texto)
         etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if nuevo else ESTILO_BADGE_ROJO)
+
+    def _celda_badge_estado(self, fila: int, columna: int, becario_id: int, estado: str):
+        """Badge de Estado HU-03: clickeable, abre popup con las 3 opciones."""
+        etiqueta = QLabel(estado)
+        etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        etiqueta.setStyleSheet(estilo_estado(estado))
+        etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
+        etiqueta.setToolTip("Clic para cambiar el estado")
+        etiqueta.installEventFilter(self)
+        self._estado_labels[etiqueta] = {"becario_id": becario_id, "estado": estado}
+        self.tabla.setCellWidget(fila, columna, etiqueta)
+
+    def _mostrar_menu_estado(self, etiqueta: QLabel):
+        """Popup inline en la celda con los 3 estados; guarda al elegir."""
+        info = self._estado_labels.get(etiqueta)
+        if info is None:
+            return
+        menu = QMenu(self)
+        menu.setObjectName("menuFiltrar")  # reutiliza el estilo del dropdown
+        for estado in becario_service.ESTADOS_BECARIO:
+            accion = menu.addAction(estado)
+            accion.setCheckable(True)
+            accion.setChecked(info["estado"] == estado)
+            accion.triggered.connect(
+                lambda checked=False, e=estado: self._elegir_estado(etiqueta, e)
+            )
+        menu.exec(QCursor.pos())
+
+    def _elegir_estado(self, etiqueta: QLabel, estado: str):
+        """Guarda el estado y actualiza el badge en pantalla (sin recargar)."""
+        info = self._estado_labels.get(etiqueta)
+        if info is None:
+            return
+        try:
+            becario_service.actualizar_estado(info["becario_id"], estado)
+        except Exception as e:
+            mostrar_notificacion(self, f"No se pudo guardar el estado: {e}", tipo="error")
+            return
+        info["estado"] = estado
+        etiqueta.setText(estado)
+        etiqueta.setStyleSheet(estilo_estado(estado))
 
     def _mostrar_menu_filtrar(self):
         """HU-06 (conteo) + funcionalidad adelantada de HU-07 (filtro por categoría).

@@ -206,6 +206,20 @@ def actualizar_carta_renovacion(
     return seguimiento_repository.actualizar(seg, db_path)
 
 
+ESTADOS_BECARIO = ["Activo", "En renovación", "Baja/Inactivo"]
+
+
+def actualizar_estado(becario_id: int, estado: str, db_path: Path = DB_PATH) -> Becario:
+    """HU-03: cambia el estado del becario (validado contra los 3 permitidos)."""
+    valor = (estado or "").strip()
+    if valor not in ESTADOS_BECARIO:
+        raise ValueError(f"Estado no válido. Use uno de: {', '.join(ESTADOS_BECARIO)}.")
+    if becario_repository.buscar_por_id(becario_id, db_path) is None:
+        raise ValueError("El becario no existe.")
+    becario_repository.actualizar_estado(becario_id, valor, db_path)
+    return becario_repository.buscar_por_id(becario_id, db_path)
+
+
 def listar_para_panel(db_path: Path = DB_PATH):
     """Filas del Panel de Control: (Becario, SeguimientoBecario o None)."""
     return seguimiento_repository.listar_para_panel(db_path)
@@ -226,22 +240,22 @@ def contar_becarios_por_categoria(db_path: Path = DB_PATH) -> list[tuple[str, in
 # Sirven para probar el listado y el futuro filtro por carrera.
 # ---------------------------------------------------------------------------
 _DATOS_EJEMPLO = [
-    # (nombres, apellidos, ci, codigo, carrera, contacto, tipo, %ant, horas, mat, carpeta, carta)
-    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Excelencia", "100%", True, True, True, True),
-    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Económica Social", "0%", False, False, False, False),
-    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Convenio", "50%", True, False, False, True),
-    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Plantel Administrativo", "50%", True, True, False, True),
-    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Directorio", "100%", True, True, True, False),
-    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Ministerial", "0%", False, True, False, False),
-    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Excelencia", "100%", False, True, False, False),
-    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Económica Social", "50%", True, True, True, True),
-    ("Miguel", "Huanca Copa", "7452309", "25034", "GAS", "71234509", "Convenio", "50%", True, False, True, True),
-    ("Paola", "Ríos Fernández", "6981342", "25108", "GAS", "71234510", "Plantel Administrativo", "100%", True, True, True, True),
-    ("Luis", "Copa Ticona", "8234567", "25241", "GAS", "71234511", "Directorio", "0%", False, False, False, True),
-    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Ministerial", "100%", True, True, False, True),
-    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Excelencia", "50%", False, True, False, False),
-    ("Carolina", "Paredes Flores", "7981234", "27045", "CON", "71234514", "Económica Social", "100%", True, True, True, True),
-    ("Javier", "Ticona Ríos", "6456789", "27190", "CON", "71234515", "Convenio", "0%", False, False, False, False),
+    # (nombres, apellidos, ci, codigo, carrera, contacto, tipo, estado, %ant, horas, mat, carpeta, carta)
+    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Excelencia", "Activo", "100%", True, True, True, True),
+    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Económica Social", "Activo", "0%", False, False, False, False),
+    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Convenio", "Activo", "50%", True, False, False, True),
+    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Plantel Administrativo", "Activo", "50%", True, True, False, True),
+    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Directorio", "Activo", "100%", True, True, True, False),
+    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Ministerial", "En renovación", "0%", False, True, False, False),
+    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Excelencia", "En renovación", "100%", False, True, False, False),
+    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Económica Social", "Activo", "50%", True, True, True, True),
+    ("Miguel", "Huanca Copa", "7452309", "25034", "GAS", "71234509", "Convenio", "Activo", "50%", True, False, True, True),
+    ("Paola", "Ríos Fernández", "6981342", "25108", "GAS", "71234510", "Plantel Administrativo", "Activo", "100%", True, True, True, True),
+    ("Luis", "Copa Ticona", "8234567", "25241", "GAS", "71234511", "Directorio", "Baja/Inactivo", "0%", False, False, False, True),
+    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Ministerial", "Activo", "100%", True, True, False, True),
+    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Excelencia", "Activo", "50%", False, True, False, False),
+    ("Carolina", "Paredes Flores", "7981234", "27045", "CON", "71234514", "Económica Social", "Activo", "100%", True, True, True, True),
+    ("Javier", "Ticona Ríos", "6456789", "27190", "CON", "71234515", "Convenio", "En renovación", "0%", False, False, False, False),
 ]
 
 
@@ -249,12 +263,12 @@ def asegurar_datos_ejemplo(db_path: Path = DB_PATH) -> int:
     """Inserta los ejemplos si la tabla está vacía. Retorna cuántos insertó."""
     if becario_repository.contar_becarios(db_path) > 0:
         return 0
-    for (nombres, apellidos, ci, codigo, carrera, contacto, tipo_beca,
+    for (nombres, apellidos, ci, codigo, carrera, contacto, tipo_beca, estado,
          porc_ant, horas, mat, carpeta, carta) in _DATOS_EJEMPLO:
         becario = becario_repository.insertar_becario(
             Becario(id=None, nombres=nombres, apellidos=apellidos, ci=ci,
                     codigo_estudiante=codigo, carrera=carrera, contacto=contacto,
-                    tipo_beca=tipo_beca),
+                    tipo_beca=tipo_beca, estado=estado),
             db_path,
         )
         seguimiento_repository.crear_seguimiento(
@@ -280,3 +294,25 @@ def completar_tipos_vacios(db_path: Path = DB_PATH) -> int:
     for i, becario_id in enumerate(ids):
         becario_repository.asignar_tipo_beca(becario_id, tipos[i % len(tipos)], db_path)
     return len(ids)
+
+
+def distribuir_estados_ejemplo(db_path: Path = DB_PATH) -> int:
+    """Reparto puntual: si TODOS los becarios están en "Activo" (valor por
+    defecto, nunca clasificados porque no había UI para cambiarlo), asigna
+    estados variados por orden de id (En renovación ×3, Baja ×1).
+
+    Si algún registro ya tiene otro estado, no toca nada (dato real).
+    Idempotente: segunda corrida encuentra no-Activos y retorna 0.
+    """
+    todos = becario_repository.listar_todos(db_path)
+    if not todos or any(b.estado != "Activo" for b in todos):
+        return 0
+    ids = sorted(b.id for b in todos if b.id is not None)
+    # Reparto simple y trazable: posiciones 5, 9, 13 -> En renovación; 11 -> Baja.
+    cambiados = 0
+    for posicion, estado in ((5, "En renovación"), (9, "En renovación"),
+                            (11, "Baja/Inactivo"), (13, "En renovación")):
+        if posicion < len(ids):
+            becario_repository.actualizar_estado(ids[posicion], estado, db_path)
+            cambiados += 1
+    return cambiados

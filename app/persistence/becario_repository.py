@@ -180,6 +180,18 @@ def asignar_tipo_beca(becario_id: int, tipo: str, db_path: Path = DB_PATH):
         conn.close()
 
 
+def actualizar_estado(becario_id: int, estado: str, db_path: Path = DB_PATH):
+    """Fija el estado de un becario (HU-03). La validación vive en el servicio."""
+    conn = get_connection(db_path)
+    try:
+        conn.execute(
+            "UPDATE becario SET estado = ? WHERE id = ?", (estado.strip(), becario_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def listar_todos(db_path: Path = DB_PATH) -> list[Becario]:
     conn = get_connection(db_path)
     try:
