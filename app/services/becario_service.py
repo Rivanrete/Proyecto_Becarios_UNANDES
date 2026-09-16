@@ -8,42 +8,29 @@ from pathlib import Path
 
 from app.models.becario import Becario
 from app.models.seguimiento_becario import SeguimientoBecario
-from app.persistence import becario_repository, seguimiento_repository
+from app.persistence import becario_repository, carrera_repository, seguimiento_repository, tipo_beca_repository
 from app.persistence.database import DB_PATH
-
-CATALOGO_CARRERAS = ["IAU", "DTEX", "DER", "GAS", "SIS", "CON"]
-
-# Sigla -> nombre completo (el combo muestra "Nombre - SIGLA", se guarda la sigla).
-CARRERAS = {
-    "CON": "Contaduría",
-    "DER": "Derecho",
-    "DTEX": "Diseño Textil y Moda",
-    "GAS": "Gastronomía",
-    "IAU": "Ingeniería Automotriz",
-    "SIS": "Ingeniería de Sistemas",
-}
-
-# Categorías de beca (HU-03). El combo las lista tal cual, se guarda el texto.
-TIPOS_BECA = [
-    "Excelencia",
-    "Económica Social",
-    "Convenio",
-    "Plantel Administrativo",
-    "Directorio",
-    "Ministerial",
-]
 
 GESTION_EJEMPLO = "II-2024"
 
 CAMPOS_REQUERIDOS = ("nombres", "apellidos", "ci", "codigo_estudiante", "carrera", "tipo_beca")
 
 
-def opciones_carrera() -> list[tuple[str, str]]:
-    """(sigla, 'Nombre Completo - SIGLA') ordenadas por nombre completo."""
-    return sorted(
-        ((sigla, f"{nombre} - {sigla}") for sigla, nombre in CARRERAS.items()),
-        key=lambda par: par[1],
-    )
+def opciones_carrera(db_path: Path = DB_PATH) -> list[tuple[str, str]]:
+    """(sigla, 'Nombre Completo - SIGLA') desde la BD, ordenadas por nombre.
+
+    Mismo formato de siempre para la UI; la fuente ahora es la tabla
+    carreras (solo activas), no una lista fija en código.
+    """
+    return [
+        (c.sigla, f"{c.nombre_completo} - {c.sigla}")
+        for c in carrera_repository.listar_activos(db_path)
+    ]
+
+
+def listar_tipos_beca(db_path: Path = DB_PATH) -> list[str]:
+    """Nombres de tipos activos para el combo, desde la BD."""
+    return [t.nombre for t in tipo_beca_repository.listar_activos(db_path)]
 
 
 class BecarioDuplicadoError(ValueError):
@@ -66,14 +53,16 @@ def _normalizar(datos: dict) -> dict:
     return limpio
 
 
-def _validar_requeridos(datos: dict):
+def _validar_requeridos(datos: dict, db_path: Path = DB_PATH):
     faltantes = [c for c in CAMPOS_REQUERIDOS if not datos[c]]
     if faltantes:
         raise ValueError(f"Faltan datos obligatorios: {', '.join(faltantes)}.")
-    if datos["carrera"] not in CARRERAS:
-        raise ValueError(f"Carrera no válida. Use una de: {', '.join(CARRERAS)}.")
-    if datos["tipo_beca"] not in TIPOS_BECA:
-        raise ValueError(f"Tipo de beca no válido. Use uno de: {', '.join(TIPOS_BECA)}.")
+    siglas = [c.sigla for c in carrera_repository.listar_activos(db_path)]
+    if datos["carrera"] not in siglas:
+        raise ValueError(f"Carrera no válida. Use una de: {', '.join(siglas)}.")
+    tipos = [t.nombre for t in tipo_beca_repository.listar_activos(db_path)]
+    if datos["tipo_beca"] not in tipos:
+        raise ValueError(f"Tipo de beca no válido. Use uno de: {', '.join(tipos)}.")
 
 
 def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
@@ -83,7 +72,7 @@ def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
     horas en "No cumplió" y materias en "Sí" (el resto en negativo/0%).
     """
     limpio = _normalizar(datos)
-    _validar_requeridos(limpio)
+    _validar_requeridos(limpio, db_path)
     if becario_repository.existe_ci(limpio["ci"], db_path=db_path):
         raise BecarioDuplicadoError("ci")
     if becario_repository.existe_codigo(limpio["codigo_estudiante"], db_path=db_path):
@@ -106,7 +95,7 @@ def editar_becario(becario_id: int, datos: dict, db_path: Path = DB_PATH) -> Bec
     if actual is None:
         raise ValueError("El becario no existe.")
     limpio = _normalizar(datos)
-    _validar_requeridos(limpio)
+    _validar_requeridos(limpio, db_path)
     if becario_repository.existe_ci(limpio["ci"], excluir_id=becario_id, db_path=db_path):
         raise BecarioDuplicadoError("ci")
     if becario_repository.existe_codigo(limpio["codigo_estudiante"], excluir_id=becario_id, db_path=db_path):

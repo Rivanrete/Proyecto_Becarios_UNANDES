@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -130,7 +131,14 @@ class PanelControlWindow(QMainWindow):
         self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla.verticalHeader().setVisible(False)
-        self.tabla.horizontalHeader().setStretchLastSection(True)
+        # Reparto híbrido: columnas 0-8 al tamaño de su contenido y las dos
+        # últimas (encabezados largos) en Stretch para absorber todo el
+        # ancho sobrante. Así no hay franja vacía ni encabezados cortados.
+        cabecera = self.tabla.horizontalHeader()
+        for i in range(len(COLUMNAS) - 2):
+            cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        for i in (len(COLUMNAS) - 2, len(COLUMNAS) - 1):
+            cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch)
         # Doble clic abre el becario en modo edición (HU-02, CA-1).
         self.tabla.cellDoubleClicked.connect(self._abrir_editar)
         layout_contenido.addWidget(self.tabla, 1)
@@ -204,7 +212,6 @@ class PanelControlWindow(QMainWindow):
                               positivo=seg.carpeta_cancelada)
             self._celda_badge(fila, 10, "Sí" if seg.carta_renovacion else "No",
                               positivo=seg.carta_renovacion)
-        self.tabla.resizeColumnsToContents()
 
     def _celda_texto(self, fila: int, columna: int, texto: str):
         item = QTableWidgetItem(texto)
@@ -270,6 +277,6 @@ class PanelControlWindow(QMainWindow):
             }}
             QHeaderView::section {{
                 background-color: {theme.AZUL_FONDO}; color: {theme.TEXTO_PRINCIPAL};
-                font-weight: 700; padding: 8px; border: none;
+                font-weight: 700; padding: 6px; border: none;
             }}
         """)

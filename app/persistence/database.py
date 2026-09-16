@@ -37,6 +37,17 @@ CREATE TABLE IF NOT EXISTS seguimiento_becario (
     carta_renovacion INTEGER NOT NULL DEFAULT 0,
     UNIQUE (becario_id, gestion)
 );
+CREATE TABLE IF NOT EXISTS carreras (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sigla TEXT NOT NULL UNIQUE,
+    nombre_completo TEXT NOT NULL,
+    activo INTEGER NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS tipos_beca (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL UNIQUE,
+    activo INTEGER NOT NULL DEFAULT 1
+);
 """
 
 
@@ -71,6 +82,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
     # circulares database -> services.
     from app.services.auth_service import asegurar_credencial_unica
     from app.services.becario_service import asegurar_datos_ejemplo
+    from app.services.catalogo_service import asegurar_catalogos
 
     asegurar_credencial_unica(db_path=db_path)
+    asegurar_catalogos(db_path=db_path)
     asegurar_datos_ejemplo(db_path=db_path)

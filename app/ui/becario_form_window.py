@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QToolButton,
     QVBoxLayout,
@@ -36,6 +35,9 @@ class BecarioFormWindow(QDialog):
     def __init__(self, parent=None, becario_id: int | None = None):
         super().__init__(parent)
         self.becario_id = becario_id
+        # main.py lee este mensaje tras accept() y lo muestra con la
+        # notificación propia del sistema (sin QMessageBox nativo).
+        self.mensaje_exito: str | None = None
         self.setWindowTitle(
             "Editar Becario" if becario_id is not None else "Nuevo Becario"
         )
@@ -88,7 +90,7 @@ class BecarioFormWindow(QDialog):
             self.cmb_carrera.addItem(etiqueta, sigla)
         self.cmb_carrera.setMaxVisibleItems(self.cmb_carrera.count())
         self.cmb_tipo = QComboBox(card)
-        self.cmb_tipo.addItems(becario_service.TIPOS_BECA)
+        self.cmb_tipo.addItems(becario_service.listar_tipos_beca())
         self.cmb_tipo.setMaxVisibleItems(self.cmb_tipo.count())
         self.txt_contacto = QLineEdit(card)
         self.txt_contacto.setPlaceholderText("Teléfono o correo (opcional)")
@@ -167,7 +169,7 @@ class BecarioFormWindow(QDialog):
             self.lbl_error.setText(str(e))
             self.lbl_error.setVisible(True)
             return
-        QMessageBox.information(self, "Becarios UNANDES", mensaje)
+        self.mensaje_exito = mensaje
         self.accept()
 
     def _apply_style(self):
