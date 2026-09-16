@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS becario (
     codigo_estudiante TEXT NOT NULL UNIQUE,
     carrera TEXT NOT NULL,
     contacto TEXT NOT NULL DEFAULT '',
-    tipo_beca TEXT NOT NULL DEFAULT ''
+    tipo_beca TEXT NOT NULL DEFAULT '',
+    estado TEXT NOT NULL DEFAULT 'Activo'
 );
 CREATE TABLE IF NOT EXISTS seguimiento_becario (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,6 +68,8 @@ def _migrar_becario(conn) -> None:
     columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(becario)")}
     if "tipo_beca" not in columnas:
         conn.execute("ALTER TABLE becario ADD COLUMN tipo_beca TEXT NOT NULL DEFAULT ''")
+    if "estado" not in columnas:
+        conn.execute("ALTER TABLE becario ADD COLUMN estado TEXT NOT NULL DEFAULT 'Activo'")
 
 
 def init_db(db_path: Path = DB_PATH) -> None:

@@ -8,8 +8,14 @@ por gestión con badges verde/rojo.
 FUENTE DE DATOS: consulta real (JOIN becario + seguimiento_becario)
 vía becario_service.listar_para_panel(). Doble clic en una fila abre
 el formulario en modo edición.
+
+Búsqueda en vivo: el campo filtra por coincidencia parcial (contiene)
+en código, nombres y apellidos, sin importar mayúsculas ni tildes.
 """
+import unicodedata
+
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -46,6 +52,13 @@ COLUMNAS = [
 ]
 
 TEXTO_BUSQUEDA = "Buscar por código Ej: 23718 o por nombre Beymar Condori Quispe"
+TEXTO_SIN_RESULTADOS = "Ninguna coincidencia"
+
+
+def _normalizar_texto(texto: str) -> str:
+    """Minúsculas sin tildes para comparar (búsqueda insensible a ambas)."""
+    base = unicodedata.normalize("NFKD", texto or "")
+    return "".join(c for c in base if not unicodedata.combining(c)).lower()
 
 ESTILO_BADGE_VERDE = (
     "background-color: #dcfce7; color: #166534; "
@@ -76,6 +89,7 @@ class PanelControlWindow(QMainWindow):
         self.setWindowTitle("UNANDES • Registro de Becarios — Panel de Control")
         self.setMinimumSize(900, 600)
         self._ids_fila: list[int] = []
+        self._filas_completas: list = []
         self._build_ui()
         self._apply_style()
         self.refrescar()
@@ -143,6 +157,9 @@ class PanelControlWindow(QMainWindow):
         self.tabla.cellDoubleClicked.connect(self._abrir_editar)
         layout_contenido.addWidget(self.tabla, 1)
 
+        # Búsqueda en vivo: filtra mientras se escribe (sin Enter ni botón).
+        self.txt_busqueda.textChanged.connect(self._al_escribir)
+
         layout_raiz.addWidget(contenido, 1)
         self.setCentralWidget(raiz)
 
@@ -178,15 +195,38 @@ class PanelControlWindow(QMainWindow):
 
     # -- datos (fuente real: JOIN becario + seguimiento_becario) ------------
     def refrescar(self):
-        """Recarga la tabla desde la base de datos."""
-        filas = [
+        """Recarga la tabla desde la base de datos (respeta el filtro escrito)."""
+        self._filas_completas = [
             (b.id, b.carrera, b.apellidos, b.nombres, b.codigo_estudiante,
              seg if seg is not None else SeguimientoBecario(
                  id=None, becario_id=b.id, gestion="—"),
              seg.gestion if seg is not None else "—")
             for b, seg in becario_service.listar_para_panel()
         ]
-        self.cargar_seguimientos(filas)
+        self.aplicar_filtro(self.txt_busqueda.text())
+
+    def _al_escribir(self, texto: str):
+        """Filtra en tiempo real con cada tecla (coincidencia parcial)."""
+        self.aplicar_filtro(texto)
+
+    def aplicar_filtro(self, texto: str):
+        """Muestra solo filas cuyo código, nombres o apellidos contengan el texto.
+
+        Vacío = todas las filas. Sin coincidencias = tabla vacía + aviso.
+        """
+        consulta = _normalizar_texto(texto.strip())
+        if not consulta:
+            self.cargar_seguimientos(list(self._filas_completas))
+            return
+        filtradas = [
+            fila for fila in self._filas_completas
+            if consulta in _normalizar_texto(fila[4])
+            or consulta in _normalizar_texto(fila[3])
+            or consulta in _normalizar_texto(fila[2])
+            or consulta in _normalizar_texto(f"{fila[3]} {fila[2]}")
+            or consulta in _normalizar_texto(f"{fila[2]} {fila[3]}")
+        ]
+        self.cargar_seguimientos(filtradas)
 
     def cargar_seguimientos(self, filas):
         """Puebla la tabla. `filas`: (becario_id, carrera, apellidos,
@@ -212,6 +252,24 @@ class PanelControlWindow(QMainWindow):
                               positivo=seg.carpeta_cancelada)
             self._celda_badge(fila, 10, "Sí" if seg.carta_renovacion else "No",
                               positivo=seg.carta_renovacion)
+        if self.tabla.rowCount() == 0:
+            self._fila_sin_resultados()
+
+    def _fila_sin_resultados(self):
+        """Fila fantasma dentro de la tabla: una celda fusionada (colspan)
+        con el aviso centrado, en el área blanca de las filas."""
+        fila = self.tabla.rowCount()
+        self.tabla.insertRow(fila)
+        self.tabla.setSpan(fila, 0, 1, len(COLUMNAS))
+        self.tabla.setRowHeight(fila, 64)
+        item = QTableWidgetItem(TEXTO_SIN_RESULTADOS)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        fuente = QFont()
+        fuente.setItalic(True)
+        item.setFont(fuente)
+        item.setForeground(QColor(theme.TEXTO_GRIS))
+        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+        self.tabla.setItem(fila, 0, item)
 
     def _celda_texto(self, fila: int, columna: int, texto: str):
         item = QTableWidgetItem(texto)

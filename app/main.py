@@ -9,8 +9,10 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 from app.persistence.database import init_db
+from app.services import becario_service
 from app.services.auth_service import SesionActual, asegurar_credencial_unica
 from app.ui.becario_form_window import BecarioFormWindow
+from app.ui.ficha_becario_window import FichaBecarioWindow
 from app.ui.login_window import LoginWindow
 from app.ui.notificacion import mostrar_notificacion
 from app.ui.overlay import ejecutar_con_overlay
@@ -24,6 +26,26 @@ def _abrir_formulario(panel: PanelControlWindow, becario_id: int | None):
         panel.refrescar()
         if dialogo.mensaje_exito:
             mostrar_notificacion(panel, dialogo.mensaje_exito, tipo="exito")
+
+
+def _buscar_y_mostrar_ficha(panel: PanelControlWindow):
+    """HU-04: reutiliza el buscador del panel (Enter o botón Filtrar).
+
+    Con resultado abre la ficha consolidada; sin resultado notifica
+    con el componente propio (sin QMessageBox nativo).
+    """
+    texto = panel.txt_busqueda.text()
+    encontrado = becario_service.buscar_becario(texto)
+    if encontrado is None:
+        mostrar_notificacion(
+            panel, f"No se encontraron resultados para '{texto.strip()}'.", tipo="error"
+        )
+        return
+    ficha = becario_service.obtener_ficha_completa(encontrado.id)
+    if ficha is None:
+        mostrar_notificacion(panel, "No se encontraron resultados.", tipo="error")
+        return
+    ejecutar_con_overlay(panel, FichaBecarioWindow(panel, ficha=ficha))
 
 
 def main() -> int:
@@ -46,6 +68,9 @@ def main() -> int:
     # doble clic en una fila lo abre en modo edición.
     principal.nuevo_becario_solicitado.connect(lambda: _abrir_formulario(principal, None))
     principal.becario_editar_solicitado.connect(lambda bid: _abrir_formulario(principal, bid))
+    # HU-04: el buscador existente abre la ficha (Enter o clic en Filtrar).
+    principal.txt_busqueda.returnPressed.connect(lambda: _buscar_y_mostrar_ficha(principal))
+    principal.btn_filtrar.clicked.connect(lambda: _buscar_y_mostrar_ficha(principal))
     principal.showMaximized()
     return app.exec()
 

@@ -1,7 +1,8 @@
-"""Entidad Becario — HU-02 (+ tipo_beca de HU-03).
+"""Entidad Becario — HU-02 (+ tipo_beca de HU-03, + estado para HU-04).
 
 Datos generales del becario: id, nombres, apellidos, ci,
-codigo_estudiante, carrera (sigla), contacto y tipo_beca.
+codigo_estudiante, carrera (sigla), contacto, tipo_beca y estado.
+El estado se gestiona en HU-03; aquí solo se almacena y muestra.
 Sin lógica de validación ni de UI aquí.
 """
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ class Becario:
     carrera: str
     contacto: str = ""
     tipo_beca: str = ""
+    estado: str = "Activo"
 
     def __post_init__(self) -> None:
         self.nombres = self.nombres.strip()
@@ -27,3 +29,4 @@ class Becario:
         self.carrera = self.carrera.strip().upper()
         self.contacto = self.contacto.strip()
         self.tipo_beca = self.tipo_beca.strip()
+        self.estado = self.estado.strip() or "Activo"

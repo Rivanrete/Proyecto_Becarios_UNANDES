@@ -100,11 +100,53 @@ def editar_becario(becario_id: int, datos: dict, db_path: Path = DB_PATH) -> Bec
         raise BecarioDuplicadoError("ci")
     if becario_repository.existe_codigo(limpio["codigo_estudiante"], excluir_id=becario_id, db_path=db_path):
         raise BecarioDuplicadoError("codigo_estudiante")
-    return becario_repository.actualizar_becario(Becario(id=becario_id, **limpio), db_path)
+    actualizado = Becario(id=becario_id, **limpio)
+    # El estado se gestiona en HU-03, no en este formulario: se preserva.
+    actualizado.estado = actual.estado
+    return becario_repository.actualizar_becario(actualizado, db_path)
 
 
 def obtener_becario(becario_id: int, db_path: Path = DB_PATH) -> Becario | None:
     return becario_repository.buscar_por_id(becario_id, db_path)
+
+
+def buscar_becario(codigo_o_ci: str, db_path: Path = DB_PATH) -> Becario | None:
+    """HU-04: busca primero por código de estudiante y, si no hay, por CI.
+
+    Retorna el Becario encontrado o None (la UI muestra "sin resultados").
+    """
+    texto = (codigo_o_ci or "").strip()
+    if not texto:
+        return None
+    encontrado = becario_repository.buscar_por_codigo(texto, db_path)
+    if encontrado is None:
+        encontrado = becario_repository.buscar_por_ci(texto, db_path)
+    return encontrado
+
+
+def obtener_ficha_completa(becario_id: int, db_path: Path = DB_PATH) -> dict | None:
+    """HU-04: agrega Becario + SeguimientoBecario más reciente.
+
+    Claves: becario, seguimiento (o None), registro_academico (None,
+    reservado para HU-05). Sin DocumentoBecario: esa HU salió del alcance
+    vigente, por eso la ficha no tiene sección de documentos.
+    """
+    becario = becario_repository.buscar_por_id(becario_id, db_path)
+    if becario is None:
+        return None
+    seguimientos = [
+        seg for b, seg in seguimiento_repository.listar_para_panel(db_path)
+        if b.id == becario_id
+    ]
+    seguimiento = seguimientos[0] if seguimientos else None
+    carrera = carrera_repository.obtener_por_sigla(becario.carrera, db_path)
+    etiqueta = f"{carrera.nombre_completo} - {carrera.sigla}" if carrera else becario.carrera
+    return {
+        "becario": becario,
+        "seguimiento": seguimiento,
+        "carrera_etiqueta": etiqueta,
+        "registro_academico": None,  # HU-05: notas y horas del periodo
+    }
 
 
 def listar_para_panel(db_path: Path = DB_PATH):

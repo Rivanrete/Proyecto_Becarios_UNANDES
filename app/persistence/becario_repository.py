@@ -9,7 +9,7 @@ from typing import Optional
 from app.models.becario import Becario
 from app.persistence.database import DB_PATH, get_connection
 
-_COLUMNAS = "id, nombres, apellidos, ci, codigo_estudiante, carrera, contacto, tipo_beca"
+_COLUMNAS = "id, nombres, apellidos, ci, codigo_estudiante, carrera, contacto, tipo_beca, estado"
 
 
 def _mapear(fila) -> Becario:
@@ -22,6 +22,7 @@ def _mapear(fila) -> Becario:
         carrera=fila["carrera"],
         contacto=fila["contacto"],
         tipo_beca=fila["tipo_beca"],
+        estado=fila["estado"],
     )
 
 
@@ -29,11 +30,11 @@ def insertar_becario(becario: Becario, db_path: Path = DB_PATH) -> Becario:
     conn = get_connection(db_path)
     try:
         cur = conn.execute(
-            "INSERT INTO becario (nombres, apellidos, ci, codigo_estudiante, carrera, contacto, tipo_beca)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO becario (nombres, apellidos, ci, codigo_estudiante, carrera, contacto, tipo_beca, estado)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (becario.nombres, becario.apellidos, becario.ci,
              becario.codigo_estudiante, becario.carrera, becario.contacto,
-             becario.tipo_beca),
+             becario.tipo_beca, becario.estado),
         )
         conn.commit()
         becario.id = cur.lastrowid
@@ -47,10 +48,10 @@ def actualizar_becario(becario: Becario, db_path: Path = DB_PATH) -> Becario:
     try:
         conn.execute(
             "UPDATE becario SET nombres = ?, apellidos = ?, ci = ?,"
-            " codigo_estudiante = ?, carrera = ?, contacto = ?, tipo_beca = ? WHERE id = ?",
+            " codigo_estudiante = ?, carrera = ?, contacto = ?, tipo_beca = ?, estado = ? WHERE id = ?",
             (becario.nombres, becario.apellidos, becario.ci,
              becario.codigo_estudiante, becario.carrera, becario.contacto,
-             becario.tipo_beca, becario.id),
+             becario.tipo_beca, becario.estado, becario.id),
         )
         conn.commit()
         return becario
@@ -63,6 +64,36 @@ def buscar_por_id(becario_id: int, db_path: Path = DB_PATH) -> Optional[Becario]
     try:
         fila = conn.execute(
             f"SELECT {_COLUMNAS} FROM becario WHERE id = ?", (becario_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+    return _mapear(fila) if fila is not None else None
+
+
+def buscar_por_codigo(codigo: str, db_path: Path = DB_PATH) -> Optional[Becario]:
+    """Busca por código de estudiante exacto (sin normalizar caso)."""
+    clave = (codigo or "").strip()
+    if not clave:
+        return None
+    conn = get_connection(db_path)
+    try:
+        fila = conn.execute(
+            f"SELECT {_COLUMNAS} FROM becario WHERE codigo_estudiante = ?", (clave,)
+        ).fetchone()
+    finally:
+        conn.close()
+    return _mapear(fila) if fila is not None else None
+
+
+def buscar_por_ci(ci: str, db_path: Path = DB_PATH) -> Optional[Becario]:
+    """Busca por CI exacto."""
+    clave = (ci or "").strip()
+    if not clave:
+        return None
+    conn = get_connection(db_path)
+    try:
+        fila = conn.execute(
+            f"SELECT {_COLUMNAS} FROM becario WHERE ci = ?", (clave,)
         ).fetchone()
     finally:
         conn.close()
