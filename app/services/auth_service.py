@@ -1,9 +1,10 @@
-"""Lógica de negocio de autenticación — HU-01 / CU-01.
+"""Lógica de negocio de autenticación — HU-01 / CU-01 (credencial única).
 
 - validar_credenciales(usuario, contraseña): única puerta de validación.
-  La UI nunca debe validar por su cuenta, solo llama a esta función
-  y muestra el resultado.
+  Compara contra el ÚNICO registro (obtener_credencial_unica), no contra
+  una búsqueda multiusuario.
 - Sesión activa como variable de estado en memoria (sin tokens ni expiración).
+- Seed de pruebas: prueba / 1234 (hasheada, solo desarrollo).
 """
 import hashlib
 import hmac
@@ -16,6 +17,9 @@ from app.persistence import usuario_repository
 from app.persistence.database import DB_PATH
 
 _ITERACIONES = 200_000
+
+USUARIO_SEMILLA = "prueba"
+CONTRASENA_SEMILLA = "1234"
 
 
 class SesionActual:
@@ -53,37 +57,44 @@ def verificar_contrasena(contrasena_plana: str, contrasena_hash: str) -> bool:
 
 
 def validar_credenciales(nombre_usuario: str, contrasena: str, db_path: Path = DB_PATH) -> Optional[Usuario]:
-    """Valida credenciales.
+    """Valida contra la credencial única del sistema.
 
-    Retorna el Usuario si son correctas (e inicia SesionActual),
-    o None si son incorrectas / vacías / usuario inexistente.
+    Retorna el Usuario si usuario Y contraseña coinciden con el único
+    registro (e inicia SesionActual), o None en cualquier otro caso.
     """
-    usuario = (nombre_usuario or "").strip()
+    usuario = (nombre_usuario or "").strip().lower()
     clave = contrasena or ""
     if not usuario or not clave:
         return None
-    encontrado = usuario_repository.buscar_por_nombre_usuario(usuario, db_path)
-    if encontrado is None:
+    cred = usuario_repository.obtener_credencial_unica(db_path)
+    if cred is None:
         return None
-    if not verificar_contrasena(clave, encontrado.contrasena_hash):
+    if usuario != cred.nombre_usuario:
         return None
-    SesionActual.iniciar(encontrado)
-    return encontrado
+    if not verificar_contrasena(clave, cred.contrasena_hash):
+        return None
+    SesionActual.iniciar(cred)
+    return cred
 
 
-def asegurar_usuario_inicial(
-    nombre_usuario: str = "bienestar",
-    contrasena_plana: str = "Bienestar123",
+def asegurar_credencial_unica(
+    nombre_usuario: str = USUARIO_SEMILLA,
+    contrasena_plana: str = CONTRASENA_SEMILLA,
     db_path: Path = DB_PATH,
 ) -> Usuario:
-    """Crea el usuario inicial si no existe. PROVISIONAL (la HU no define seed).
-
-    Pregunta abierta para la Responsable: ¿qué usuario/clave inicial usar?
-    Por ahora se usa bienestar / Bienestar123 solo para desarrollo local.
-    """
-    existente = usuario_repository.buscar_por_nombre_usuario(nombre_usuario, db_path)
+    """Garantiza que exista el único registro (seed de desarrollo). Idempotente."""
+    existente = usuario_repository.obtener_credencial_unica(db_path)
     if existente is not None:
         return existente
     return usuario_repository.crear_usuario(
         nombre_usuario, generar_hash_contrasena(contrasena_plana), db_path
     )
+
+
+# Alias de compatibilidad (antes se llamaba así).
+def asegurar_usuario_inicial(
+    nombre_usuario: str = USUARIO_SEMILLA,
+    contrasena_plana: str = CONTRASENA_SEMILLA,
+    db_path: Path = DB_PATH,
+) -> Usuario:
+    return asegurar_credencial_unica(nombre_usuario, contrasena_plana, db_path)

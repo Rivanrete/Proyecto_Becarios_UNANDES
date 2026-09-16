@@ -1,71 +1,135 @@
-"""Ventana de login — HU-01.
+"""Ventana de login — HU-01 (tarjeta blanca, maximizada, escudo, recordar usuario).
 
 Solo UI: captura usuario/contraseña y delega a validar_credenciales().
 NO contiene reglas de validación.
 
-Incluye (y solo esto):
-- campo usuario, campo contraseña con mostrar/ocultar,
-  botón "Iniciar Sesión", mensaje de error inline.
-Excluye deliberadamente (fuera de alcance HU-01):
-- indicador de servidor, periodo académico, recordar sesión, ¿olvidó su clave?
+"Recordar usuario" solo pre-rellena el nombre de usuario (QSettings
+local). NO guarda la contraseña ni mantiene sesión.
 """
-from PySide6.QtCore import Qt
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QSettings
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
-    QVBoxLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
     QToolButton,
-    QFrame,
+    QVBoxLayout,
 )
 
 from app.services import auth_service
 from app.ui import theme
+
+ORG = "UNANDES"
+APP = "RegistroBecarios"
+KEY_USUARIO = "usuario_recordado"
+_DIR_ASSETS = Path(__file__).resolve().parents[1] / "assets"
+
+
+def _ruta_escudo() -> Path | None:
+    """Retorna la ruta del escudo si existe (.png, .jpg o .jpeg), o None."""
+    for nombre in ("escudo_unandes.png", "escudo_unandes.jpg", "escudo_unandes.jpeg"):
+        ruta = _DIR_ASSETS / nombre
+        try:
+            if ruta.is_file():
+                return ruta
+        except OSError:
+            continue
+    return None
 
 
 class LoginWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("UNANDES • Registro de Becarios — Iniciar sesión")
-        self.setMinimumSize(460, 560)
+        # Controles nativos de ventana (minimizar, maximizar/restaurar, cerrar).
+        # Necesarios porque la ventana abre maximizada.
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setMinimumSize(480, 620)
+        self._maximizado_aplicado = False
+        self.settings = QSettings(ORG, APP)
         self._build_ui()
         self._apply_style()
+        self._cargar_usuario_recordado()
+
+    def showEvent(self, event):
+        """Abre maximizada (respeta la barra de tareas).
+
+        Se fuerza aquí porque el estado fijado en __init__ se pierde
+        en diálogos modales cuando exec() re-muestra la ventana.
+        Se usa showMaximized(), NO showFullScreen(), para no tapar
+        la barra de tareas de Windows.
+        """
+        super().showEvent(event)
+        if not self._maximizado_aplicado:
+            self._maximizado_aplicado = True
+            self.showMaximized()
 
     def _build_ui(self):
         root = QVBoxLayout(self)
         root.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        root.setContentsMargins(40, 32, 40, 32)
-        root.setSpacing(12)
+        root.setContentsMargins(48, 40, 48, 40)
+        root.setSpacing(16)
 
         card = QFrame(self)
         card.setObjectName("card")
+        card.setMinimumWidth(440)
+        card.setMaximumWidth(520)
         card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(10)
-        card_layout.setContentsMargins(28, 28, 28, 28)
+        card_layout.setSpacing(12)
+        card_layout.setContentsMargins(40, 36, 40, 36)
 
-        # Logo placeholder (la HU no exige logo real; solo referencia de estilo).
-        logo = QLabel("UNANDES", card)
-        logo.setObjectName("logo")
-        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Escudo UNANDES centrado arriba. Si el archivo falta, el espacio
+        # queda vacío: nunca rompe la app ni muestra texto de error.
+        self.lbl_escudo = QLabel(card)
+        self.lbl_escudo.setObjectName("escudo")
+        self.lbl_escudo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_escudo.setFixedHeight(120)
+        try:
+            ruta = _ruta_escudo()
+            pix = QPixmap(str(ruta)) if ruta is not None else QPixmap()
+            if not pix.isNull():
+                self.lbl_escudo.setPixmap(
+                    pix.scaledToHeight(120, Qt.TransformationMode.SmoothTransformation)
+                )
+        except Exception:
+            pass
+        card_layout.addWidget(self.lbl_escudo)
 
         titulo = QLabel("Bienestar Estudiantil", card)
         titulo.setObjectName("titulo")
         titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(titulo)
 
         subtitulo = QLabel("Control y Seguimiento de Becarios", card)
         subtitulo.setObjectName("subtitulo")
         subtitulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(subtitulo)
+
+        card_layout.addSpacing(8)
 
         lbl_usuario = QLabel("USUARIO", card)
         lbl_usuario.setObjectName("etiqueta")
+        card_layout.addWidget(lbl_usuario)
+
         self.txt_usuario = QLineEdit(card)
-        self.txt_usuario.setPlaceholderText("Ej. bienestar")
+        self.txt_usuario.setPlaceholderText("Ej. prueba")
         self.txt_usuario.setClearButtonEnabled(True)
+        card_layout.addWidget(self.txt_usuario)
 
         lbl_clave = QLabel("CONTRASEÑA", card)
         lbl_clave.setObjectName("etiqueta")
+        card_layout.addWidget(lbl_clave)
 
         fila_clave = QHBoxLayout()
         fila_clave.setSpacing(0)
@@ -80,32 +144,47 @@ class LoginWindow(QDialog):
         self.btn_mostrar.toggled.connect(self._alternar_clave)
         fila_clave.addWidget(self.txt_clave, 1)
         fila_clave.addWidget(self.btn_mostrar)
+        card_layout.addLayout(fila_clave)
 
         # Mensaje de error inline (CA-5). Oculto hasta que falla un intento.
         self.lbl_error = QLabel("", card)
         self.lbl_error.setObjectName("error")
         self.lbl_error.setWordWrap(True)
+        self.lbl_error.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_error.setVisible(False)
+        card_layout.addWidget(self.lbl_error)
+
+        self.chk_recordar = QCheckBox("Recordar usuario en este equipo", card)
+        self.chk_recordar.setObjectName("recordar")
+        card_layout.addWidget(self.chk_recordar)
+
+        card_layout.addSpacing(4)
 
         self.btn_login = QPushButton("Iniciar Sesión  →", card)
         self.btn_login.setObjectName("login")
         self.btn_login.setDefault(True)
         self.btn_login.clicked.connect(self._on_login)
+        card_layout.addWidget(self.btn_login)
+
+        card_layout.addSpacing(4)
 
         pie = QLabel("Universidad de los Andes • Bienestar Estudiantil", card)
         pie.setObjectName("pie")
         pie.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(pie)
 
-        for w in (logo, titulo, subtitulo, lbl_usuario, self.txt_usuario,
-                  lbl_clave, self.lbl_error, self.btn_login, pie):
-            if isinstance(w, QHBoxLayout):
-                continue
-            card_layout.addWidget(w)
-        card_layout.insertLayout(6, fila_clave)
-
-        root.addWidget(card)
+        root.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
         self.txt_usuario.returnPressed.connect(self._on_login)
         self.txt_clave.returnPressed.connect(self._on_login)
+
+    def _cargar_usuario_recordado(self):
+        recordado = (self.settings.value(KEY_USUARIO, "") or "").strip()
+        if recordado:
+            self.txt_usuario.setText(recordado)
+            self.chk_recordar.setChecked(True)
+            self.txt_clave.setFocus()
+        else:
+            self.txt_usuario.setFocus()
 
     def _alternar_clave(self, mostrar: bool):
         self.txt_clave.setEchoMode(
@@ -119,6 +198,10 @@ class LoginWindow(QDialog):
             self.txt_usuario.text(), self.txt_clave.text()
         )
         if usuario is not None:
+            if self.chk_recordar.isChecked():
+                self.settings.setValue(KEY_USUARIO, usuario.nombre_usuario)
+            else:
+                self.settings.remove(KEY_USUARIO)
             self.accept()  # main.py abrirá la pantalla principal
         else:
             self.lbl_error.setText("Usuario o contraseña incorrectos. Intente nuevamente.")
@@ -130,35 +213,33 @@ class LoginWindow(QDialog):
         self.setStyleSheet(f"""
             QDialog {{ background-color: {theme.AZUL_FONDO}; }}
             QFrame#card {{
-                background-color: {theme.AZUL_TARJETA};
-                border: 1px solid {theme.AZUL_BORDE};
-                border-radius: 12px;
+                background-color: {theme.BLANCO_TARJETA};
+                border: 1px solid #e5e7eb;
+                border-radius: 16px;
             }}
-            QLabel#logo {{
-                color: {theme.TEXTO_PRINCIPAL}; font-size: 22px; font-weight: 800;
-                letter-spacing: 2px;
-            }}
-            QLabel#titulo {{ color: {theme.TEXTO_PRINCIPAL}; font-size: 24px; font-weight: 800; }}
-            QLabel#subtitulo {{ color: {theme.VERDE_TEXTO}; font-size: 13px; font-weight: 600; }}
-            QLabel#etiqueta {{ color: {theme.TEXTO_SECUNDARIO}; font-size: 11px; font-weight: 700; letter-spacing: 1px; }}
+            QLabel#titulo {{ color: {theme.TEXTO_OSCURO}; font-size: 26px; font-weight: 800; }}
+            QLabel#subtitulo {{ color: {theme.VERDE_OSCURO}; font-size: 14px; font-weight: 600; }}
+            QLabel#etiqueta {{ color: {theme.TEXTO_GRIS}; font-size: 11px; font-weight: 700; letter-spacing: 1px; }}
             QLineEdit {{
-                background-color: {theme.AZUL_CAMPO}; color: {theme.TEXTO_PRINCIPAL};
-                border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px; padding: 10px;
+                background-color: {theme.CAMPO_FONDO}; color: {theme.TEXTO_OSCURO};
+                border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 11px;
                 font-size: 14px;
             }}
-            QLineEdit:focus {{ border: 1px solid {theme.VERDE_LIMA}; }}
+            QLineEdit:focus {{ border: 1px solid {theme.VERDE_OSCURO}; }}
             QToolButton#mostrar {{
-                background-color: {theme.AZUL_CAMPO}; color: {theme.TEXTO_SECUNDARIO};
-                border: 1px solid {theme.AZUL_BORDE}; border-left: none;
+                background-color: {theme.CAMPO_FONDO}; color: {theme.TEXTO_GRIS};
+                border: 1px solid {theme.BORDE_SUAVE}; border-left: none;
                 border-top-right-radius: 8px; border-bottom-right-radius: 8px;
-                padding: 10px;
+                padding: 11px;
             }}
-            QLabel#error {{ color: {theme.TEXTO_ERROR}; font-size: 12px; font-weight: 600; }}
+            QLabel#error {{ color: {theme.TEXTO_ERROR_CLARO}; font-size: 12px; font-weight: 600; }}
+            QCheckBox#recordar {{ color: {theme.TEXTO_GRIS}; font-size: 12px; }}
+            QCheckBox#recordar::indicator {{ width: 16px; height: 16px; }}
             QPushButton#login {{
                 background-color: {theme.VERDE_LIMA}; color: #0a1633;
                 font-size: 15px; font-weight: 800; border: none;
-                border-radius: 8px; padding: 12px;
+                border-radius: 8px; padding: 13px;
             }}
             QPushButton#login:hover {{ background-color: {theme.VERDE_LIMA_HOVER}; }}
-            QLabel#pie {{ color: {theme.TEXTO_SECUNDARIO}; font-size: 11px; }}
+            QLabel#pie {{ color: {theme.TEXTO_GRIS_SUAVE}; font-size: 11px; }}
         """)

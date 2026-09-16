@@ -1,6 +1,8 @@
 """Persistencia local SQLite — standalone, sin red ni servidor.
 
 La BD vive en <raiz_proyecto>/data/becarios.db
+Sistema de CREDENCIAL ÚNICA: init_db crea el esquema y, si la tabla
+está vacía, inserta el seed de pruebas (prueba / 1234 hasheada).
 """
 import sqlite3
 from pathlib import Path
@@ -30,3 +32,8 @@ def init_db(db_path: Path = DB_PATH) -> None:
         conn.commit()
     finally:
         conn.close()
+    # Seed de credencial única (idempotente). Import diferido para
+    # evitar dependencia circular database -> auth_service.
+    from app.services.auth_service import asegurar_credencial_unica
+
+    asegurar_credencial_unica(db_path=db_path)
