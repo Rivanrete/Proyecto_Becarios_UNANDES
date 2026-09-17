@@ -59,7 +59,7 @@ def main() -> int:
     asegurar_credencial_unica()
 
     app = QApplication(sys.argv)
-    icono = rutas.assets_dir() / "escudo_unandes.ico"
+    icono = rutas.assets_dir() / "icono-unandes.ico"
     if icono.is_file():
         app.setWindowIcon(QIcon(str(icono)))
 
