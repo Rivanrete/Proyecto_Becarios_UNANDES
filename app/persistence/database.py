@@ -115,10 +115,11 @@ def init_db(db_path: Path = DB_PATH) -> None:
         completar_tipos_vacios,
         distribuir_estados_ejemplo,
     )
-    from app.services.catalogo_service import asegurar_catalogos
+    from app.services.catalogo_service import asegurar_catalogos, migrar_catalogos_v2
 
     asegurar_credencial_unica(db_path=db_path)
     asegurar_catalogos(db_path=db_path)
+    migrar_catalogos_v2(db_path=db_path)
     asegurar_datos_ejemplo(db_path=db_path)
     completar_tipos_vacios(db_path=db_path)
     distribuir_estados_ejemplo(db_path=db_path)

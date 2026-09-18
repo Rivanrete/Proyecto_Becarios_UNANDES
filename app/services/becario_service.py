@@ -270,21 +270,21 @@ def contar_becarios_por_categoria(db_path: Path = DB_PATH) -> list[tuple[str, in
 # ---------------------------------------------------------------------------
 _DATOS_EJEMPLO = [
     # (nombres, apellidos, ci, codigo, carrera, contacto, tipo, estado, %ant, horas, mat, carpeta, carta)
-    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Excelencia", "Activo", "100%", True, True, True, True),
+    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Excelencia Académica", "Activo", "100%", True, True, True, True),
     ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Económica Social", "Activo", "0%", False, False, False, False),
-    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Convenio", "Activo", "50%", True, False, False, True),
-    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Plantel Administrativo", "Activo", "50%", True, True, False, True),
-    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Directorio", "Activo", "100%", True, True, True, False),
-    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Ministerial", "En renovación", "0%", False, True, False, False),
-    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Excelencia", "En renovación", "100%", False, True, False, False),
+    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Convenio Interinstitucional", "Activo", "50%", True, False, False, True),
+    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Personal Administrativo", "Activo", "50%", True, True, False, True),
+    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Honorífica Directorio", "Activo", "100%", True, True, True, False),
+    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Social - Ministerio de Educación", "En renovación", "0%", False, True, False, False),
+    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Excelencia Académica", "En renovación", "100%", False, True, False, False),
     ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Económica Social", "Activo", "50%", True, True, True, True),
-    ("Miguel", "Huanca Copa", "7452309", "25034", "GAS", "71234509", "Convenio", "Activo", "50%", True, False, True, True),
-    ("Paola", "Ríos Fernández", "6981342", "25108", "GAS", "71234510", "Plantel Administrativo", "Activo", "100%", True, True, True, True),
-    ("Luis", "Copa Ticona", "8234567", "25241", "GAS", "71234511", "Directorio", "Baja/Inactivo", "0%", False, False, False, True),
-    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Ministerial", "Activo", "100%", True, True, False, True),
-    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Excelencia", "Activo", "50%", False, True, False, False),
-    ("Carolina", "Paredes Flores", "7981234", "27045", "CON", "71234514", "Económica Social", "Activo", "100%", True, True, True, True),
-    ("Javier", "Ticona Ríos", "6456789", "27190", "CON", "71234515", "Convenio", "En renovación", "0%", False, False, False, False),
+    ("Miguel", "Huanca Copa", "7452309", "25034", "LGYH", "71234509", "Convenio Interinstitucional", "Activo", "50%", True, False, True, True),
+    ("Paola", "Ríos Fernández", "6981342", "25108", "LGYH", "71234510", "Personal Administrativo", "Activo", "100%", True, True, True, True),
+    ("Luis", "Copa Ticona", "8234567", "25241", "LGYH", "71234511", "Honorífica Directorio", "Baja/Inactivo", "0%", False, False, False, True),
+    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Social - Ministerio de Educación", "Activo", "100%", True, True, False, True),
+    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Excelencia Académica", "Activo", "50%", False, True, False, False),
+    ("Carolina", "Paredes Flores", "7981234", "27045", "CPU", "71234514", "Económica Social", "Activo", "100%", True, True, True, True),
+    ("Javier", "Ticona Ríos", "6456789", "27190", "CPU", "71234515", "Convenio Interinstitucional", "En renovación", "0%", False, False, False, False),
 ]
 
 

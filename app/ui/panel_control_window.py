@@ -13,6 +13,7 @@ Búsqueda en vivo: el campo filtra por coincidencia parcial (contiene)
 en código, nombres y apellidos, sin importar mayúsculas ni tildes.
 """
 import unicodedata
+import webbrowser
 
 from PySide6.QtCore import Qt, QEvent, Signal
 from PySide6.QtGui import QColor, QCursor, QFont
@@ -52,8 +53,8 @@ COLUMNAS = [
     "Gestión",
     "Horas Becarias",
     "Materias en Orden",
-    "Carpeta de Becas Cancelada",
-    "Carta de Renovación Presentada",
+    "Carpeta Cancelada",
+    "Carta Renovación",
     "Estado",
 ]
 
@@ -75,14 +76,45 @@ def estilo_estado(estado: str) -> str:
         return ESTILO_BADGE_ROJO
     return ESTILO_BADGE_NEUTRO
 
+
+def _opciones_campo(campo: str) -> list:
+    """Opciones válidas del desplegable: coinciden con lo que usa el sistema."""
+    if campo == "estado":
+        return list(becario_service.ESTADOS_BECARIO)
+    return [True, False]
+
+
+def _texto_opcion(campo: str, valor) -> str:
+    """Etiqueta visible de cada opción (misma que ya mostraban los badges)."""
+    if campo == "horas_becarias":
+        return "Cumplió" if valor else "No cumplió"
+    if campo == "estado":
+        return str(valor)
+    return "Sí" if valor else "No"
+
+
+def _estilo_opcion(campo: str, valor) -> str:
+    if campo == "estado":
+        return estilo_estado(valor)
+    return ESTILO_BADGE_VERDE if valor else ESTILO_BADGE_ROJO
+
 TEXTO_BUSQUEDA = "Buscar por código Ej: 23718 o por nombre Beymar Condori Quispe"
 TEXTO_SIN_RESULTADOS = "Ninguna coincidencia"
+
+# Índice de la columna Código en la tabla principal (doble clic = perfil SIAC).
+INDICE_COLUMNA_CODIGO = 4
+URL_PERFIL_SIAC = "https://udelosandes.com/siac/estudiante/informacion_academica/{codigo}/218"
+
+
+def abrir_perfil_siac(codigo: str):
+    """Abre el perfil SIAC del código en el navegador predeterminado."""
+    webbrowser.open(URL_PERFIL_SIAC.format(codigo=(codigo or "").strip()))
 
 COLUMNAS_INACTIVOS = ["N.", "Apellidos", "Nombres", "CI", "Código", "Carrera", "", ""]
 
 COLUMNAS_RESPALDO = ["N.", "Carrera", "Apellidos", "Nombres", "Código",
                      "% Anterior", "Gestión", "Horas Becarias", "Materias en Orden",
-                     "Carpeta de Becas Cancelada", "Carta de Renovación Presentada",
+                     "Carpeta Cancelada", "Carta Renovación",
                      "Estado"]
 
 
@@ -123,8 +155,7 @@ class PanelControlWindow(QMainWindow):
         self._ids_fila: list[int] = []
         self._filas_completas: list = []
         self._inactivos_completos: list = []
-        self._toggle_info: dict = {}
-        self._estado_labels: dict = {}
+        self._menu_info: dict = {}
         self._categoria_filtro: str | None = None
         self._botones_sidebar: list = []
         self._build_ui()
@@ -500,8 +531,7 @@ class PanelControlWindow(QMainWindow):
         real o None si aún no tiene registro, tipo_beca, estado)."""
         self.tabla.setRowCount(0)
         self._ids_fila = []
-        self._toggle_info = {}
-        self._estado_labels = {}
+        self._menu_info = {}
         for i, (becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo, estado) in enumerate(filas, start=1):
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
@@ -513,19 +543,19 @@ class PanelControlWindow(QMainWindow):
             self._celda_texto(fila, 4, codigo)
             self._celda_texto(fila, 5, seg.porcentaje_anterior)
             self._celda_texto(fila, 6, gestion)
-            self._celda_badge_toggle(fila, 7, "Cumplió" if seg.horas_becarias else "No cumplió",
-                                     seg.horas_becarias, becario_id, "horas_becarias",
+            self._celda_badge_menu(fila, 7, becario_id, "horas_becarias",
+                                     seg.horas_becarias,
                                      real.gestion if real is not None else None)
-            self._celda_badge_toggle(fila, 8, "Sí" if seg.materias_en_orden else "No",
-                                     seg.materias_en_orden, becario_id, "materias_en_orden",
+            self._celda_badge_menu(fila, 8, becario_id, "materias_en_orden",
+                                     seg.materias_en_orden,
                                      real.gestion if real is not None else None)
-            self._celda_badge_toggle(fila, 9, "Sí" if seg.carpeta_cancelada else "No",
-                                     seg.carpeta_cancelada, becario_id, "carpeta_cancelada",
+            self._celda_badge_menu(fila, 9, becario_id, "carpeta_cancelada",
+                                     seg.carpeta_cancelada,
                                      real.gestion if real is not None else None)
-            self._celda_badge_toggle(fila, 10, "Sí" if seg.carta_renovacion else "No",
-                                     seg.carta_renovacion, becario_id, "carta_renovacion",
+            self._celda_badge_menu(fila, 10, becario_id, "carta_renovacion",
+                                     seg.carta_renovacion,
                                      real.gestion if real is not None else None)
-            self._celda_badge_estado(fila, 11, becario_id, estado)
+            self._celda_badge_menu(fila, 11, becario_id, "estado", estado, None)
         if self.tabla.rowCount() == 0:
             self._fila_sin_resultados()
 
@@ -558,104 +588,68 @@ class PanelControlWindow(QMainWindow):
         )
         self.tabla.setCellWidget(fila, columna, etiqueta)
 
-    def _celda_badge_toggle(self, fila: int, columna: int, texto: str, positivo: bool,
-                            becario_id: int, campo: str, gestion: str | None):
-        """Badge clickeable HU-05: mano, tooltip y alternancia al clic."""
-        etiqueta = QLabel(texto)
+    def _celda_badge_menu(self, fila: int, columna: int, becario_id: int,
+                            campo: str, valor_actual, gestion: str | None):
+        """Badge clickeable: mano, tooltip y desplegable con opciones válidas."""
+        etiqueta = QLabel(_texto_opcion(campo, valor_actual))
         etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        etiqueta.setStyleSheet(
-            ESTILO_BADGE_VERDE if positivo else ESTILO_BADGE_ROJO
-        )
+        etiqueta.setStyleSheet(_estilo_opcion(campo, valor_actual))
         etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
         etiqueta.setToolTip("Clic para cambiar")
         etiqueta.installEventFilter(self)
-        self._toggle_info[etiqueta] = {
+        self._menu_info[etiqueta] = {
             "becario_id": becario_id, "campo": campo,
-            "valor": positivo, "gestion": gestion,
+            "valor": valor_actual, "gestion": gestion,
         }
         self.tabla.setCellWidget(fila, columna, etiqueta)
 
     def eventFilter(self, obj, event):
         if (event.type() == QEvent.Type.MouseButtonRelease
-                and event.button() == Qt.MouseButton.LeftButton):
-            if obj in self._toggle_info:
-                self._alternar_campo(obj)
-                return True
-            if obj in self._estado_labels:
-                self._mostrar_menu_estado(obj)
-                return True
+                and event.button() == Qt.MouseButton.LeftButton
+                and obj in self._menu_info):
+            self._mostrar_menu_opciones(obj)
+            return True
         return super().eventFilter(obj, event)
 
-    def _alternar_campo(self, etiqueta: QLabel):
-        """Alterna el badge y guarda en BD con feedback inmediato (sin recargar)."""
-        info = self._toggle_info.get(etiqueta)
-        if info is None:
-            return
-        nuevo = not info["valor"]
-        try:
-            if info["campo"] == "horas_becarias":
-                becario_service.actualizar_horas_becarias(
-                    info["becario_id"], info["gestion"], nuevo)
-                texto = "Cumplió" if nuevo else "No cumplió"
-            elif info["campo"] == "materias_en_orden":
-                becario_service.actualizar_materias_en_orden(
-                    info["becario_id"], info["gestion"], nuevo)
-                texto = "Sí" if nuevo else "No"
-            elif info["campo"] == "carpeta_cancelada":
-                becario_service.actualizar_carpeta_cancelada(
-                    info["becario_id"], info["gestion"], nuevo)
-                texto = "Sí" if nuevo else "No"
-            else:
-                becario_service.actualizar_carta_renovacion(
-                    info["becario_id"], info["gestion"], nuevo)
-                texto = "Sí" if nuevo else "No"
-        except Exception as e:
-            mostrar_notificacion(self, f"No se pudo guardar el cambio: {e}", tipo="error")
-            return
-        info["valor"] = nuevo
-        etiqueta.setText(texto)
-        etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if nuevo else ESTILO_BADGE_ROJO)
-
-    def _celda_badge_estado(self, fila: int, columna: int, becario_id: int, estado: str):
-        """Badge de Estado HU-03: clickeable, abre popup con las 3 opciones."""
-        etiqueta = QLabel(estado)
-        etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        etiqueta.setStyleSheet(estilo_estado(estado))
-        etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
-        etiqueta.setToolTip("Clic para cambiar el estado")
-        etiqueta.installEventFilter(self)
-        self._estado_labels[etiqueta] = {"becario_id": becario_id, "estado": estado}
-        self.tabla.setCellWidget(fila, columna, etiqueta)
-
-    def _mostrar_menu_estado(self, etiqueta: QLabel):
-        """Popup inline en la celda con los 3 estados; guarda al elegir."""
-        info = self._estado_labels.get(etiqueta)
-        if info is None:
-            return
+    def _construir_menu_opciones(self, etiqueta: QLabel):
+        """Arma el desplegable (sin mostrarlo): una acción por opción válida,
+        marcada la actual. Cerrar sin elegir no cambia nada."""
+        info = self._menu_info.get(etiqueta)
         menu = QMenu(self)
         menu.setObjectName("menuFiltrar")  # reutiliza el estilo del dropdown
-        for estado in becario_service.ESTADOS_BECARIO:
-            accion = menu.addAction(estado)
+        if info is None:
+            return menu
+        for opcion in _opciones_campo(info["campo"]):
+            accion = menu.addAction(_texto_opcion(info["campo"], opcion))
             accion.setCheckable(True)
-            accion.setChecked(info["estado"] == estado)
+            accion.setChecked(opcion == info["valor"])
             accion.triggered.connect(
-                lambda checked=False, e=estado: self._elegir_estado(etiqueta, e)
+                lambda checked=False, o=opcion: self._elegir_opcion(etiqueta, o)
             )
-        menu.exec(QCursor.pos())
+        return menu
 
-    def _elegir_estado(self, etiqueta: QLabel, estado: str):
-        """Guarda el estado y refresca ambas vistas al instante.
+    def _mostrar_menu_opciones(self, etiqueta: QLabel):
+        self._construir_menu_opciones(etiqueta).exec(QCursor.pos())
 
-        No hace falta señal externa: es llamada directa en el mismo objeto,
-        y refrescar() reconstruye principal e inactivos (filtros conservados).
-        """
-        info = self._estado_labels.get(etiqueta)
+    def _elegir_opcion(self, etiqueta: QLabel, opcion):
+        """Guarda la opción elegida y refresca (filtros conservados)."""
+        info = self._menu_info.get(etiqueta)
         if info is None:
             return
         try:
-            becario_service.actualizar_estado(info["becario_id"], estado)
+            campo, bid = info["campo"], info["becario_id"]
+            if campo == "horas_becarias":
+                becario_service.actualizar_horas_becarias(bid, info["gestion"], opcion)
+            elif campo == "materias_en_orden":
+                becario_service.actualizar_materias_en_orden(bid, info["gestion"], opcion)
+            elif campo == "carpeta_cancelada":
+                becario_service.actualizar_carpeta_cancelada(bid, info["gestion"], opcion)
+            elif campo == "carta_renovacion":
+                becario_service.actualizar_carta_renovacion(bid, info["gestion"], opcion)
+            else:
+                becario_service.actualizar_estado(bid, opcion)
         except Exception as e:
-            mostrar_notificacion(self, f"No se pudo guardar el estado: {e}", tipo="error")
+            mostrar_notificacion(self, f"No se pudo guardar el cambio: {e}", tipo="error")
             return
         self.refrescar()
 
@@ -711,10 +705,17 @@ class PanelControlWindow(QMainWindow):
         self.btn_filtrar.setText(etiqueta)
         self.aplicar_filtro(self.txt_busqueda.text())
 
-    def _abrir_editar(self, fila: int, _columna: int):
-        """Doble clic en una fila: solicita edición del becario (HU-02)."""
-        if 0 <= fila < len(self._ids_fila):
-            self.becario_editar_solicitado.emit(self._ids_fila[fila])
+    def _abrir_editar(self, fila: int, columna: int):
+        """Doble clic en una fila: columna Código abre solo el SIAC;
+        el resto abre la ventana de editar (HU-02)."""
+        if not 0 <= fila < len(self._ids_fila):
+            return
+        if columna == INDICE_COLUMNA_CODIGO:
+            item = self.tabla.item(fila, INDICE_COLUMNA_CODIGO)
+            if item is not None:
+                abrir_perfil_siac(item.text())
+            return
+        self.becario_editar_solicitado.emit(self._ids_fila[fila])
 
     def _apply_style(self):
         self.setStyleSheet(f"""
