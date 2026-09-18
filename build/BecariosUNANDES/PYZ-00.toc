@@ -66,6 +66,10 @@
   ('app.models.carrera',
    'C:\\Users\\RIVAN\\Desktop\\Becarios proyecto\\app\\models\\carrera.py',
    'PYMODULE'),
+  ('app.models.respaldo_becario',
+   'C:\\Users\\RIVAN\\Desktop\\Becarios '
+   'proyecto\\app\\models\\respaldo_becario.py',
+   'PYMODULE'),
   ('app.models.seguimiento_becario',
    'C:\\Users\\RIVAN\\Desktop\\Becarios '
    'proyecto\\app\\models\\seguimiento_becario.py',
@@ -88,9 +92,17 @@
    'C:\\Users\\RIVAN\\Desktop\\Becarios '
    'proyecto\\app\\persistence\\carrera_repository.py',
    'PYMODULE'),
+  ('app.persistence.configuracion_repository',
+   'C:\\Users\\RIVAN\\Desktop\\Becarios '
+   'proyecto\\app\\persistence\\configuracion_repository.py',
+   'PYMODULE'),
   ('app.persistence.database',
    'C:\\Users\\RIVAN\\Desktop\\Becarios '
    'proyecto\\app\\persistence\\database.py',
+   'PYMODULE'),
+  ('app.persistence.respaldo_repository',
+   'C:\\Users\\RIVAN\\Desktop\\Becarios '
+   'proyecto\\app\\persistence\\respaldo_repository.py',
    'PYMODULE'),
   ('app.persistence.seguimiento_repository',
    'C:\\Users\\RIVAN\\Desktop\\Becarios '
@@ -122,6 +134,10 @@
    'C:\\Users\\RIVAN\\Desktop\\Becarios '
    'proyecto\\app\\services\\catalogo_service.py',
    'PYMODULE'),
+  ('app.services.gestion_service',
+   'C:\\Users\\RIVAN\\Desktop\\Becarios '
+   'proyecto\\app\\services\\gestion_service.py',
+   'PYMODULE'),
   ('app.ui',
    'C:\\Users\\RIVAN\\Desktop\\Becarios proyecto\\app\\ui\\__init__.py',
    'PYMODULE'),
@@ -129,9 +145,16 @@
    'C:\\Users\\RIVAN\\Desktop\\Becarios '
    'proyecto\\app\\ui\\becario_form_window.py',
    'PYMODULE'),
+  ('app.ui.dialogo_base',
+   'C:\\Users\\RIVAN\\Desktop\\Becarios proyecto\\app\\ui\\dialogo_base.py',
+   'PYMODULE'),
   ('app.ui.ficha_becario_window',
    'C:\\Users\\RIVAN\\Desktop\\Becarios '
    'proyecto\\app\\ui\\ficha_becario_window.py',
+   'PYMODULE'),
+  ('app.ui.historial_gestiones_window',
+   'C:\\Users\\RIVAN\\Desktop\\Becarios '
+   'proyecto\\app\\ui\\historial_gestiones_window.py',
    'PYMODULE'),
   ('app.ui.login_window',
    'C:\\Users\\RIVAN\\Desktop\\Becarios proyecto\\app\\ui\\login_window.py',

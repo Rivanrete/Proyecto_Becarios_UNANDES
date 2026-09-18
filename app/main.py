@@ -13,18 +13,41 @@ from app import rutas
 from app.persistence.database import init_db
 from app.services import becario_service
 from app.services.auth_service import SesionActual, asegurar_credencial_unica
+from app.services.gestion_service import verificar_gestion_activa
 from app.ui.becario_form_window import BecarioFormWindow
 from app.ui.ficha_becario_window import FichaBecarioWindow
+from app.ui.historial_gestiones_window import HistorialGestionesWindow
 from app.ui.login_window import LoginWindow
 from app.ui.notificacion import mostrar_notificacion
-from app.ui.overlay import ejecutar_con_overlay
+from app.ui.overlay import ejecutar_con_overlay, mostrar_sin_bloqueo
 from app.ui.panel_control_window import PanelControlWindow
 
 
 def _abrir_formulario(panel: PanelControlWindow, becario_id: int | None):
-    """Abre el formulario HU-02 (nuevo o editar) y confirma con notificación propia."""
+    """Abre el formulario HU-02 (nuevo o editar) sin bloquear, con overlay.
+
+    Sesiones no modales: el formulario se cierra con X, Cancelar, Esc o
+    clic fuera; el historial (si hay) lo cierra el formulario al terminar.
+    Si ya hay una sesión abierta se ignora el pedido (sin overlays apilados).
+    """
+    if getattr(panel, "_sesion_modal", None) is not None:
+        return
     dialogo = BecarioFormWindow(panel, becario_id=becario_id)
-    if ejecutar_con_overlay(panel, dialogo) == BecarioFormWindow.DialogCode.Accepted:
+    if becario_id is None:
+        panel._sesion_modal = mostrar_sin_bloqueo(
+            panel, dialogo, al_terminar=lambda r: _tras_formulario(panel, dialogo, r))
+    else:
+        lateral = HistorialGestionesWindow(
+            panel, gestiones=becario_service.historial_gestiones(becario_id))
+        panel._sesion_modal = mostrar_sin_bloqueo(
+            panel, dialogo, lateral=lateral,
+            al_terminar=lambda r: _tras_formulario(panel, dialogo, r))
+
+
+def _tras_formulario(panel: PanelControlWindow, dialogo: BecarioFormWindow, resultado: int):
+    """Limpieza al cerrar el formulario + refresco y aviso si se guardó."""
+    panel._sesion_modal = None
+    if resultado == BecarioFormWindow.DialogCode.Accepted:
         panel.refrescar()
         if dialogo.mensaje_exito:
             mostrar_notificacion(panel, dialogo.mensaje_exito, tipo="exito")
@@ -57,6 +80,7 @@ def _buscar_y_mostrar_ficha(panel: PanelControlWindow):
 def main() -> int:
     init_db()  # ya incluye el seed único; llamada idempotente extra por seguridad
     asegurar_credencial_unica()
+    verificar_gestion_activa()  # actualiza la gestión por fecha si cambió
 
     app = QApplication(sys.argv)
     icono = rutas.assets_dir() / "icono-unandes.ico"

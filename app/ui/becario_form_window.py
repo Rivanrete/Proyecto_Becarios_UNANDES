@@ -12,10 +12,10 @@ Modo "editar": BecarioFormWindow(parent, becario_id=...) precargado.
 Toda validación y duplicados pasan por becario_service; aquí solo se
 muestran (error inline estilo login, éxito con diálogo de confirmación).
 """
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QRegularExpression
+from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QComboBox,
-    QDialog,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -29,11 +29,14 @@ from PySide6.QtWidgets import (
 from app.services import becario_service
 from app.services.becario_service import BecarioDuplicadoError
 from app.ui import theme
+from app.ui.dialogo_base import DialogoBase
 
 
-class BecarioFormWindow(QDialog):
+class BecarioFormWindow(DialogoBase):
     def __init__(self, parent=None, becario_id: int | None = None):
-        super().__init__(parent)
+        # Sin marco nativo: ver DialogoBase (frameless, no modal).
+        # El cierre es X / Cancelar / Esc / clic fuera (overlay).
+        super().__init__(parent, modal=False)
         self.becario_id = becario_id
         # main.py lee este mensaje tras accept() y lo muestra con la
         # notificación propia del sistema (sin QMessageBox nativo).
@@ -41,10 +44,6 @@ class BecarioFormWindow(QDialog):
         self.setWindowTitle(
             "Editar Becario" if becario_id is not None else "Nuevo Becario"
         )
-        # Sin marco nativo: el diálogo es un overlay sobre la ventana padre.
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setModal(True)
         self.setMinimumSize(800, 760)
         self._build_ui()
         self._apply_style()
@@ -81,10 +80,16 @@ class BecarioFormWindow(QDialog):
 
         form = QFormLayout()
         form.setSpacing(10)
+        # Solo dígitos (incluye ceros a la izquierda): bloquea letras y
+        # símbolos al escribir y al pegar. La BD sigue guardando TEXT.
+        validador_digitos = QRegularExpressionValidator(
+            QRegularExpression("^[0-9]*$"), card)
         self.txt_nombres = QLineEdit(card)
         self.txt_apellidos = QLineEdit(card)
         self.txt_ci = QLineEdit(card)
+        self.txt_ci.setValidator(validador_digitos)
         self.txt_codigo = QLineEdit(card)
+        self.txt_codigo.setValidator(validador_digitos)
         self.cmb_carrera = QComboBox(card)
         for sigla, etiqueta in becario_service.opciones_carrera():
             self.cmb_carrera.addItem(etiqueta, sigla)
@@ -93,7 +98,8 @@ class BecarioFormWindow(QDialog):
         self.cmb_tipo.addItems(becario_service.listar_tipos_beca())
         self.cmb_tipo.setMaxVisibleItems(self.cmb_tipo.count())
         self.txt_contacto = QLineEdit(card)
-        self.txt_contacto.setPlaceholderText("Teléfono o correo (opcional)")
+        self.txt_contacto.setValidator(validador_digitos)
+        self.txt_contacto.setPlaceholderText("Celular, solo números (opcional)")
         form.addRow("Nombres:", self.txt_nombres)
         form.addRow("Apellidos:", self.txt_apellidos)
         form.addRow("CI:", self.txt_ci)

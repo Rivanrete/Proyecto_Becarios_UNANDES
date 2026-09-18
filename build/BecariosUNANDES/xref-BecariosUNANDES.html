@@ -296,7 +296,9 @@ imported by:
  &#8226;   <a href="#PySide6.QtSvg">PySide6.QtSvg</a>
  &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
  &#8226;   <a href="#app.ui.becario_form_window">app.ui.becario_form_window</a>
+ &#8226;   <a href="#app.ui.dialogo_base">app.ui.dialogo_base</a>
  &#8226;   <a href="#app.ui.ficha_becario_window">app.ui.ficha_becario_window</a>
+ &#8226;   <a href="#app.ui.historial_gestiones_window">app.ui.historial_gestiones_window</a>
  &#8226;   <a href="#app.ui.login_window">app.ui.login_window</a>
  &#8226;   <a href="#app.ui.notificacion">app.ui.notificacion</a>
  &#8226;   <a href="#app.ui.overlay">app.ui.overlay</a>
@@ -327,6 +329,7 @@ imported by:
  &#8226;   <a href="#PySide6.QtSvg">PySide6.QtSvg</a>
  &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
  &#8226;   <a href="#app.main">app.main</a>
+ &#8226;   <a href="#app.ui.becario_form_window">app.ui.becario_form_window</a>
  &#8226;   <a href="#app.ui.login_window">app.ui.login_window</a>
  &#8226;   <a href="#app.ui.panel_control_window">app.ui.panel_control_window</a>
 
@@ -402,7 +405,9 @@ imported by:
     <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
  &#8226;   <a href="#app.main">app.main</a>
  &#8226;   <a href="#app.ui.becario_form_window">app.ui.becario_form_window</a>
+ &#8226;   <a href="#app.ui.dialogo_base">app.ui.dialogo_base</a>
  &#8226;   <a href="#app.ui.ficha_becario_window">app.ui.ficha_becario_window</a>
+ &#8226;   <a href="#app.ui.historial_gestiones_window">app.ui.historial_gestiones_window</a>
  &#8226;   <a href="#app.ui.login_window">app.ui.login_window</a>
  &#8226;   <a href="#app.ui.notificacion">app.ui.notificacion</a>
  &#8226;   <a href="#app.ui.overlay">app.ui.overlay</a>
@@ -1532,8 +1537,10 @@ imports:
  &#8226;   <a href="#app.services">app.services</a>
  &#8226;   <a href="#app.services.auth_service">app.services.auth_service</a>
  &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
  &#8226;   <a href="#app.ui.becario_form_window">app.ui.becario_form_window</a>
  &#8226;   <a href="#app.ui.ficha_becario_window">app.ui.ficha_becario_window</a>
+ &#8226;   <a href="#app.ui.historial_gestiones_window">app.ui.historial_gestiones_window</a>
  &#8226;   <a href="#app.ui.login_window">app.ui.login_window</a>
  &#8226;   <a href="#app.ui.notificacion">app.ui.notificacion</a>
  &#8226;   <a href="#app.ui.overlay">app.ui.overlay</a>
@@ -1561,6 +1568,7 @@ imports:
 imported by:
     <a href="#app.models.becario">app.models.becario</a>
  &#8226;   <a href="#app.models.carrera">app.models.carrera</a>
+ &#8226;   <a href="#app.models.respaldo_becario">app.models.respaldo_becario</a>
  &#8226;   <a href="#app.models.seguimiento_becario">app.models.seguimiento_becario</a>
  &#8226;   <a href="#app.models.tipo_beca">app.models.tipo_beca</a>
  &#8226;   <a href="#app.models.usuario">app.models.usuario</a>
@@ -1602,6 +1610,24 @@ imports:
   <div class="import">
 imported by:
     <a href="#app.persistence.carrera_repository">app.persistence.carrera_repository</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="app.models.respaldo_becario"></a>
+  <a target="code" href="///C:/Users/RIVAN/Desktop/Becarios%20proyecto/app/models/respaldo_becario.py" type="text/plain"><tt>app.models.respaldo_becario</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#app.models">app.models</a>
+ &#8226;   <a href="#dataclasses">dataclasses</a>
+ &#8226;   <a href="#typing">typing</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.persistence.respaldo_repository">app.persistence.respaldo_repository</a>
 
   </div>
 
@@ -1673,6 +1699,8 @@ imports:
     <a href="#app">app</a>
  &#8226;   <a href="#app.persistence.becario_repository">app.persistence.becario_repository</a>
  &#8226;   <a href="#app.persistence.carrera_repository">app.persistence.carrera_repository</a>
+ &#8226;   <a href="#app.persistence.configuracion_repository">app.persistence.configuracion_repository</a>
+ &#8226;   <a href="#app.persistence.respaldo_repository">app.persistence.respaldo_repository</a>
  &#8226;   <a href="#app.persistence.seguimiento_repository">app.persistence.seguimiento_repository</a>
  &#8226;   <a href="#app.persistence.tipo_beca_repository">app.persistence.tipo_beca_repository</a>
  &#8226;   <a href="#app.persistence.usuario_repository">app.persistence.usuario_repository</a>
@@ -1682,13 +1710,16 @@ imports:
 imported by:
     <a href="#app.persistence.becario_repository">app.persistence.becario_repository</a>
  &#8226;   <a href="#app.persistence.carrera_repository">app.persistence.carrera_repository</a>
+ &#8226;   <a href="#app.persistence.configuracion_repository">app.persistence.configuracion_repository</a>
  &#8226;   <a href="#app.persistence.database">app.persistence.database</a>
+ &#8226;   <a href="#app.persistence.respaldo_repository">app.persistence.respaldo_repository</a>
  &#8226;   <a href="#app.persistence.seguimiento_repository">app.persistence.seguimiento_repository</a>
  &#8226;   <a href="#app.persistence.tipo_beca_repository">app.persistence.tipo_beca_repository</a>
  &#8226;   <a href="#app.persistence.usuario_repository">app.persistence.usuario_repository</a>
  &#8226;   <a href="#app.services.auth_service">app.services.auth_service</a>
  &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
  &#8226;   <a href="#app.services.catalogo_service">app.services.catalogo_service</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
 
   </div>
 
@@ -1710,6 +1741,7 @@ imports:
 imported by:
     <a href="#app.persistence">app.persistence</a>
  &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
 
   </div>
 
@@ -1738,6 +1770,26 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="app.persistence.configuracion_repository"></a>
+  <a target="code" href="///C:/Users/RIVAN/Desktop/Becarios%20proyecto/app/persistence/configuracion_repository.py" type="text/plain"><tt>app.persistence.configuracion_repository</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#app.persistence">app.persistence</a>
+ &#8226;   <a href="#app.persistence.database">app.persistence.database</a>
+ &#8226;   <a href="#pathlib">pathlib</a>
+ &#8226;   <a href="#typing">typing</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.persistence">app.persistence</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="app.persistence.database"></a>
   <a target="code" href="///C:/Users/RIVAN/Desktop/Becarios%20proyecto/app/persistence/database.py" type="text/plain"><tt>app.persistence.database</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
@@ -1757,12 +1809,36 @@ imported by:
     <a href="#app.main">app.main</a>
  &#8226;   <a href="#app.persistence.becario_repository">app.persistence.becario_repository</a>
  &#8226;   <a href="#app.persistence.carrera_repository">app.persistence.carrera_repository</a>
+ &#8226;   <a href="#app.persistence.configuracion_repository">app.persistence.configuracion_repository</a>
+ &#8226;   <a href="#app.persistence.respaldo_repository">app.persistence.respaldo_repository</a>
  &#8226;   <a href="#app.persistence.seguimiento_repository">app.persistence.seguimiento_repository</a>
  &#8226;   <a href="#app.persistence.tipo_beca_repository">app.persistence.tipo_beca_repository</a>
  &#8226;   <a href="#app.persistence.usuario_repository">app.persistence.usuario_repository</a>
  &#8226;   <a href="#app.services.auth_service">app.services.auth_service</a>
  &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
  &#8226;   <a href="#app.services.catalogo_service">app.services.catalogo_service</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="app.persistence.respaldo_repository"></a>
+  <a target="code" href="///C:/Users/RIVAN/Desktop/Becarios%20proyecto/app/persistence/respaldo_repository.py" type="text/plain"><tt>app.persistence.respaldo_repository</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#app.models.respaldo_becario">app.models.respaldo_becario</a>
+ &#8226;   <a href="#app.persistence">app.persistence</a>
+ &#8226;   <a href="#app.persistence.database">app.persistence.database</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#pathlib">pathlib</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.persistence">app.persistence</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
 
   </div>
 
@@ -1785,6 +1861,7 @@ imports:
 imported by:
     <a href="#app.persistence">app.persistence</a>
  &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
 
   </div>
 
@@ -1868,6 +1945,7 @@ imported by:
  &#8226;   <a href="#app.services.auth_service">app.services.auth_service</a>
  &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
  &#8226;   <a href="#app.services.catalogo_service">app.services.catalogo_service</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
  &#8226;   <a href="#app.ui.becario_form_window">app.ui.becario_form_window</a>
  &#8226;   <a href="#app.ui.ficha_becario_window">app.ui.ficha_becario_window</a>
  &#8226;   <a href="#app.ui.login_window">app.ui.login_window</a>
@@ -1919,6 +1997,7 @@ imports:
  &#8226;   <a href="#app.persistence.seguimiento_repository">app.persistence.seguimiento_repository</a>
  &#8226;   <a href="#app.persistence.tipo_beca_repository">app.persistence.tipo_beca_repository</a>
  &#8226;   <a href="#app.services">app.services</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
  &#8226;   <a href="#pathlib">pathlib</a>
 
   </div>
@@ -1956,6 +2035,33 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="app.services.gestion_service"></a>
+  <a target="code" href="///C:/Users/RIVAN/Desktop/Becarios%20proyecto/app/services/gestion_service.py" type="text/plain"><tt>app.services.gestion_service</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#app.persistence">app.persistence</a>
+ &#8226;   <a href="#app.persistence.becario_repository">app.persistence.becario_repository</a>
+ &#8226;   <a href="#app.persistence.configuracion_repository">app.persistence.configuracion_repository</a>
+ &#8226;   <a href="#app.persistence.database">app.persistence.database</a>
+ &#8226;   <a href="#app.persistence.respaldo_repository">app.persistence.respaldo_repository</a>
+ &#8226;   <a href="#app.persistence.seguimiento_repository">app.persistence.seguimiento_repository</a>
+ &#8226;   <a href="#app.services">app.services</a>
+ &#8226;   <a href="#datetime">datetime</a>
+ &#8226;   <a href="#pathlib">pathlib</a>
+ &#8226;   <a href="#typing">typing</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.main">app.main</a>
+ &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
+ &#8226;   <a href="#app.ui.panel_control_window">app.ui.panel_control_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="app.ui"></a>
   <a target="code" href="///C:/Users/RIVAN/Desktop/Becarios%20proyecto/app/ui/__init__.py" type="text/plain"><tt>app.ui</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
@@ -1968,7 +2074,9 @@ imports:
   <div class="import">
 imported by:
     <a href="#app.ui.becario_form_window">app.ui.becario_form_window</a>
+ &#8226;   <a href="#app.ui.dialogo_base">app.ui.dialogo_base</a>
  &#8226;   <a href="#app.ui.ficha_becario_window">app.ui.ficha_becario_window</a>
+ &#8226;   <a href="#app.ui.historial_gestiones_window">app.ui.historial_gestiones_window</a>
  &#8226;   <a href="#app.ui.login_window">app.ui.login_window</a>
  &#8226;   <a href="#app.ui.notificacion">app.ui.notificacion</a>
  &#8226;   <a href="#app.ui.overlay">app.ui.overlay</a>
@@ -1985,16 +2093,39 @@ imported by:
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
     <a href="#PySide6.QtCore">PySide6.QtCore</a>
+ &#8226;   <a href="#PySide6.QtGui">PySide6.QtGui</a>
  &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
  &#8226;   <a href="#app.services">app.services</a>
  &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
  &#8226;   <a href="#app.ui">app.ui</a>
+ &#8226;   <a href="#app.ui.dialogo_base">app.ui.dialogo_base</a>
  &#8226;   <a href="#app.ui.theme">app.ui.theme</a>
 
   </div>
   <div class="import">
 imported by:
     <a href="#app.main">app.main</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="app.ui.dialogo_base"></a>
+  <a target="code" href="///C:/Users/RIVAN/Desktop/Becarios%20proyecto/app/ui/dialogo_base.py" type="text/plain"><tt>app.ui.dialogo_base</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PySide6.QtCore">PySide6.QtCore</a>
+ &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
+ &#8226;   <a href="#app.ui">app.ui</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.ui.becario_form_window">app.ui.becario_form_window</a>
+ &#8226;   <a href="#app.ui.ficha_becario_window">app.ui.ficha_becario_window</a>
+ &#8226;   <a href="#app.ui.historial_gestiones_window">app.ui.historial_gestiones_window</a>
+ &#8226;   <a href="#app.ui.notificacion">app.ui.notificacion</a>
 
   </div>
 
@@ -2010,8 +2141,29 @@ imports:
  &#8226;   <a href="#app.services">app.services</a>
  &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
  &#8226;   <a href="#app.ui">app.ui</a>
+ &#8226;   <a href="#app.ui.dialogo_base">app.ui.dialogo_base</a>
  &#8226;   <a href="#app.ui.notificacion">app.ui.notificacion</a>
  &#8226;   <a href="#app.ui.panel_control_window">app.ui.panel_control_window</a>
+ &#8226;   <a href="#app.ui.theme">app.ui.theme</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#app.main">app.main</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="app.ui.historial_gestiones_window"></a>
+  <a target="code" href="///C:/Users/RIVAN/Desktop/Becarios%20proyecto/app/ui/historial_gestiones_window.py" type="text/plain"><tt>app.ui.historial_gestiones_window</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PySide6.QtCore">PySide6.QtCore</a>
+ &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
+ &#8226;   <a href="#app.ui">app.ui</a>
+ &#8226;   <a href="#app.ui.dialogo_base">app.ui.dialogo_base</a>
  &#8226;   <a href="#app.ui.theme">app.ui.theme</a>
 
   </div>
@@ -2057,6 +2209,7 @@ imports:
     <a href="#PySide6.QtCore">PySide6.QtCore</a>
  &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
  &#8226;   <a href="#app.ui">app.ui</a>
+ &#8226;   <a href="#app.ui.dialogo_base">app.ui.dialogo_base</a>
  &#8226;   <a href="#app.ui.overlay">app.ui.overlay</a>
  &#8226;   <a href="#app.ui.theme">app.ui.theme</a>
 
@@ -2104,6 +2257,7 @@ imports:
  &#8226;   <a href="#app.services">app.services</a>
  &#8226;   <a href="#app.services.auth_service">app.services.auth_service</a>
  &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
  &#8226;   <a href="#app.ui">app.ui</a>
  &#8226;   <a href="#app.ui.notificacion">app.ui.notificacion</a>
  &#8226;   <a href="#app.ui.theme">app.ui.theme</a>
@@ -2132,6 +2286,7 @@ imported by:
     <a href="#app.ui">app.ui</a>
  &#8226;   <a href="#app.ui.becario_form_window">app.ui.becario_form_window</a>
  &#8226;   <a href="#app.ui.ficha_becario_window">app.ui.ficha_becario_window</a>
+ &#8226;   <a href="#app.ui.historial_gestiones_window">app.ui.historial_gestiones_window</a>
  &#8226;   <a href="#app.ui.login_window">app.ui.login_window</a>
  &#8226;   <a href="#app.ui.notificacion">app.ui.notificacion</a>
  &#8226;   <a href="#app.ui.panel_control_window">app.ui.panel_control_window</a>
@@ -2843,6 +2998,7 @@ imported by:
     <a href="#_colorize">_colorize</a>
  &#8226;   <a href="#app.models.becario">app.models.becario</a>
  &#8226;   <a href="#app.models.carrera">app.models.carrera</a>
+ &#8226;   <a href="#app.models.respaldo_becario">app.models.respaldo_becario</a>
  &#8226;   <a href="#app.models.seguimiento_becario">app.models.seguimiento_becario</a>
  &#8226;   <a href="#app.models.tipo_beca">app.models.tipo_beca</a>
  &#8226;   <a href="#app.models.usuario">app.models.usuario</a>
@@ -2865,6 +3021,8 @@ imports:
   <div class="import">
 imported by:
     <a href="#_strptime">_strptime</a>
+ &#8226;   <a href="#app.persistence.respaldo_repository">app.persistence.respaldo_repository</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
  &#8226;   <a href="#calendar">calendar</a>
  &#8226;   <a href="#email.utils">email.utils</a>
  &#8226;   <a href="#http.cookiejar">http.cookiejar</a>
@@ -7583,7 +7741,9 @@ imported by:
     <a href="#PySide6">PySide6</a>
  &#8226;   <a href="#app.persistence.becario_repository">app.persistence.becario_repository</a>
  &#8226;   <a href="#app.persistence.carrera_repository">app.persistence.carrera_repository</a>
+ &#8226;   <a href="#app.persistence.configuracion_repository">app.persistence.configuracion_repository</a>
  &#8226;   <a href="#app.persistence.database">app.persistence.database</a>
+ &#8226;   <a href="#app.persistence.respaldo_repository">app.persistence.respaldo_repository</a>
  &#8226;   <a href="#app.persistence.seguimiento_repository">app.persistence.seguimiento_repository</a>
  &#8226;   <a href="#app.persistence.tipo_beca_repository">app.persistence.tipo_beca_repository</a>
  &#8226;   <a href="#app.persistence.usuario_repository">app.persistence.usuario_repository</a>
@@ -7591,6 +7751,7 @@ imported by:
  &#8226;   <a href="#app.services.auth_service">app.services.auth_service</a>
  &#8226;   <a href="#app.services.becario_service">app.services.becario_service</a>
  &#8226;   <a href="#app.services.catalogo_service">app.services.catalogo_service</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
  &#8226;   <a href="#app.ui.login_window">app.ui.login_window</a>
  &#8226;   <a href="#importlib.metadata">importlib.metadata</a>
  &#8226;   <a href="#importlib.resources._common">importlib.resources._common</a>
@@ -8957,15 +9118,18 @@ imported by:
  &#8226;   <a href="#annotationlib">annotationlib</a>
  &#8226;   <a href="#app.models.becario">app.models.becario</a>
  &#8226;   <a href="#app.models.carrera">app.models.carrera</a>
+ &#8226;   <a href="#app.models.respaldo_becario">app.models.respaldo_becario</a>
  &#8226;   <a href="#app.models.seguimiento_becario">app.models.seguimiento_becario</a>
  &#8226;   <a href="#app.models.tipo_beca">app.models.tipo_beca</a>
  &#8226;   <a href="#app.models.usuario">app.models.usuario</a>
  &#8226;   <a href="#app.persistence.becario_repository">app.persistence.becario_repository</a>
  &#8226;   <a href="#app.persistence.carrera_repository">app.persistence.carrera_repository</a>
+ &#8226;   <a href="#app.persistence.configuracion_repository">app.persistence.configuracion_repository</a>
  &#8226;   <a href="#app.persistence.seguimiento_repository">app.persistence.seguimiento_repository</a>
  &#8226;   <a href="#app.persistence.tipo_beca_repository">app.persistence.tipo_beca_repository</a>
  &#8226;   <a href="#app.persistence.usuario_repository">app.persistence.usuario_repository</a>
  &#8226;   <a href="#app.services.auth_service">app.services.auth_service</a>
+ &#8226;   <a href="#app.services.gestion_service">app.services.gestion_service</a>
  &#8226;   <a href="#copyreg">copyreg</a>
  &#8226;   <a href="#dataclasses">dataclasses</a>
  &#8226;   <a href="#functools">functools</a>

@@ -2,7 +2,8 @@
 
 REGLA DE PROYECTO: ningún diálogo nativo del SO (QMessageBox, QInputDialog).
 Todo emergente usa overlay de oscurecimiento + animación suave mediante
-ejecutar_con_overlay(panel, dialogo).
+ejecutar_con_overlay(panel, dialogo) —o mostrar_sin_bloqueo() cuando el
+diálogo no debe bloquear. Estándar UX: X propia + clic fuera (overlay) + Esc.
 
 El QDialog por sí solo NO oscurece el fondo en Qt: el overlay es un QWidget
 explícito que cubre la ventana principal y se destruye al cerrar el modal.
@@ -14,7 +15,7 @@ from PySide6.QtCore import (
     QPoint,
     QPropertyAnimation,
 )
-from PySide6.QtWidgets import QDialog, QGraphicsOpacityEffect, QWidget
+from PySide6.QtWidgets import QDialog, QFrame, QGraphicsOpacityEffect, QWidget
 
 DURACION_ENTRADA_MS = 250
 DURACION_SALIDA_MS = 150
@@ -106,8 +107,76 @@ def ejecutar_con_overlay(panel: QWidget, dialogo: QDialog) -> int:
         grupo = _animacion_entrada(overlay, dialogo, pos_final)
         dialogo.show()
         grupo.start()  # corre dentro del loop de exec()
+        overlay.mousePressEvent = lambda event: dialogo.reject()
         return dialogo.exec()
     finally:
         _animacion_salida(overlay)
         overlay.hide()
         overlay.deleteLater()
+
+
+ESPACIO_LATERAL_PX = 16
+
+
+def _posicionar_dual(panel: QWidget, dialogo: QDialog, lateral: QDialog) -> QPoint:
+    """Ubica el diálogo a la izquierda y el lateral a su derecha.
+
+    Iguala lo VISIBLE (las tarjetas, no solo las ventanas): la tarjeta
+    lateral toma el alto exacto de la tarjeta del diálogo y ambas ventanas
+    el mismo alto total, con los mismos márgenes -> bordes alineados.
+    Retorna la posición del diálogo.
+    """
+    dialogo.adjustSize()
+    lateral.adjustSize()
+    tarjeta = dialogo.findChild(QFrame, "card")
+    tarjeta_lat = lateral.findChild(QFrame, "cardHistorial")
+    if tarjeta is not None and tarjeta_lat is not None:
+        tarjeta_lat.setFixedHeight(tarjeta.height())
+    lateral.setMinimumHeight(dialogo.height())
+    lateral.adjustSize()
+    ancho_total = dialogo.width() + ESPACIO_LATERAL_PX + lateral.width()
+    x_inicio = max(0, panel.rect().center().x() - ancho_total // 2)
+    y_comun = max(0, panel.rect().center().y() - dialogo.height() // 2)
+    lateral.move(x_inicio + dialogo.width() + ESPACIO_LATERAL_PX, y_comun)
+    return QPoint(x_inicio, y_comun)
+
+
+def mostrar_sin_bloqueo(panel: QWidget, dialogo: QDialog, lateral: QDialog | None = None,
+                        al_terminar=None):
+    """Muestra diálogos NO modales sobre overlay (approach: sin exec()).
+
+    - Un clic fuera del diálogo (sobre el overlay) lo cierra vía reject(),
+      igual que la X, Cancelar o Esc: sin eventFilter manual.
+    - Al cerrarse el principal se cierra el lateral y se limpia el overlay.
+    - al_terminar(resultado) se invoca una sola vez al cerrar.
+    Retorna el overlay (para rastreo de sesión).
+    """
+    overlay = mostrar_overlay(panel)
+    if lateral is None:
+        pos_final = posicion_centrada(dialogo, panel)
+    else:
+        pos_final = _posicionar_dual(panel, dialogo, lateral)
+    grupo = _animacion_entrada(overlay, dialogo, pos_final)
+    dialogo.show()
+    if lateral is not None:
+        lateral.show()
+    grupo.start()
+    estado = {"terminado": False}
+
+    def _al_cerrar(resultado):
+        if estado["terminado"]:
+            return
+        estado["terminado"] = True
+        try:
+            if lateral is not None:
+                lateral.close()
+        finally:
+            _animacion_salida(overlay)
+            overlay.hide()
+            overlay.deleteLater()
+        if al_terminar is not None:
+            al_terminar(resultado)
+
+    dialogo.finished.connect(_al_cerrar)
+    overlay.mousePressEvent = lambda event: dialogo.reject()
+    return overlay

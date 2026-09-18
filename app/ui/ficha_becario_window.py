@@ -16,7 +16,6 @@ y alternan su valor guardándolo en el periodo vigente.
 """
 from PySide6.QtCore import Qt, QEvent
 from PySide6.QtWidgets import (
-    QDialog,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -28,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from app.services import becario_service
 from app.ui import theme
+from app.ui.dialogo_base import DialogoBase
 from app.ui.notificacion import mostrar_notificacion
 from app.ui.panel_control_window import ESTILO_BADGE_ROJO, ESTILO_BADGE_VERDE
 
@@ -47,19 +47,16 @@ def estilo_estado(estado: str) -> str:
     return ESTILO_BADGE_NEUTRO
 
 
-class FichaBecarioWindow(QDialog):
+class FichaBecarioWindow(DialogoBase):
     """Recibe la ficha ya armada por obtener_ficha_completa(). Solo muestra."""
 
     def __init__(self, parent=None, ficha: dict | None = None):
-        super().__init__(parent)
+        super().__init__(parent, modal=True)
         if not ficha or ficha.get("becario") is None:
             raise ValueError("La ficha no existe.")
         self.ficha = ficha
         self._toggle_info: dict = {}
         self.setWindowTitle("Ficha del Becario")
-        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setModal(True)
         self.setMinimumSize(560, 600)
         self._build_ui()
         self._apply_style()

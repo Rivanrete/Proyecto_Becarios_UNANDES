@@ -10,8 +10,7 @@ from app.models.becario import Becario
 from app.models.seguimiento_becario import SeguimientoBecario
 from app.persistence import becario_repository, carrera_repository, seguimiento_repository, tipo_beca_repository
 from app.persistence.database import DB_PATH
-
-GESTION_EJEMPLO = "II-2024"
+from app.services.gestion_service import obtener_gestion_actual
 
 CAMPOS_REQUERIDOS = ("nombres", "apellidos", "ci", "codigo_estudiante", "carrera", "tipo_beca")
 
@@ -81,7 +80,7 @@ def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
     if becario_repository.existe_codigo(limpio["codigo_estudiante"], db_path=db_path):
         raise BecarioDuplicadoError("codigo_estudiante")
     becario = becario_repository.insertar_becario(Becario(id=None, **limpio), db_path)
-    gestion = seguimiento_repository.obtener_ultima_gestion(db_path) or GESTION_EJEMPLO
+    gestion = obtener_gestion_actual()
     seguimiento_repository.crear_seguimiento(
         SeguimientoBecario(id=None, becario_id=becario.id, gestion=gestion,
                            porcentaje_anterior="0%", porcentaje_gestion="0%",
@@ -162,7 +161,7 @@ def _asegurar_seguimiento(becario_id: int, periodo: str | None, db_path: Path = 
     """
     gestion = (periodo or "").strip()
     if not gestion or gestion == "—":
-        gestion = seguimiento_repository.obtener_ultima_gestion(db_path) or GESTION_EJEMPLO
+        gestion = obtener_gestion_actual()
     seg = seguimiento_repository.obtener_por_becario(becario_id, gestion, db_path)
     if seg is None:
         seg = SeguimientoBecario(id=None, becario_id=becario_id, gestion=gestion)
@@ -225,6 +224,36 @@ def listar_para_panel(db_path: Path = DB_PATH):
     return seguimiento_repository.listar_para_panel(db_path)
 
 
+def listar_inactivos(db_path: Path = DB_PATH):
+    """Becarios con estado Baja/Inactivo (no salen en el listado principal)."""
+    return [
+        (b, seg) for b, seg in seguimiento_repository.listar_para_panel(db_path)
+        if b.estado == "Baja/Inactivo"
+    ]
+
+
+def eliminar_becario(becario_id: int, db_path: Path = DB_PATH) -> bool:
+    """Elimina el becario y sus seguimientos (hijos primero). Solo con confirmación UI."""
+    if becario_repository.buscar_por_id(becario_id, db_path) is None:
+        raise ValueError("El becario no existe.")
+    seguimiento_repository.eliminar_por_becario(becario_id, db_path)
+    return becario_repository.eliminar(becario_id, db_path)
+
+
+def eliminar_inactivos(db_path: Path = DB_PATH) -> int:
+    """Elimina TODOS los Baja/Inactivo (becario + seguimientos). Retorna cuántos."""
+    eliminados = 0
+    for becario, _seg in listar_inactivos(db_path):
+        if becario.id is not None and eliminar_becario(becario.id, db_path):
+            eliminados += 1
+    return eliminados
+
+
+def historial_gestiones(becario_id: int, db_path: Path = DB_PATH) -> list[str]:
+    """Historial del becario (primera a más reciente). Solo lectura, sin tablas nuevas."""
+    return seguimiento_repository.listar_gestiones(becario_id, db_path)
+
+
 def contar_becarios_por_categoria(db_path: Path = DB_PATH) -> list[tuple[str, int]]:
     """HU-06: [(categoria, cantidad)] para cada tipo del catálogo, con 0 incluidos."""
     conteo = becario_repository.contar_por_tipo_beca(db_path)
@@ -272,7 +301,7 @@ def asegurar_datos_ejemplo(db_path: Path = DB_PATH) -> int:
             db_path,
         )
         seguimiento_repository.crear_seguimiento(
-            SeguimientoBecario(id=None, becario_id=becario.id, gestion=GESTION_EJEMPLO,
+            SeguimientoBecario(id=None, becario_id=becario.id, gestion=obtener_gestion_actual(),
                                porcentaje_anterior=porc_ant, porcentaje_gestion=porc_ant,
                                horas_becarias=horas, materias_en_orden=mat,
                                carpeta_cancelada=carpeta, carta_renovacion=carta),
