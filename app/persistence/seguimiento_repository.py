@@ -137,7 +137,7 @@ def listar_para_panel(db_path: Path = DB_PATH) -> list[tuple[Becario, Optional[S
     try:
         filas = conn.execute(
             "SELECT b.id AS bid, b.nombres, b.apellidos, b.ci, b.codigo_estudiante,"
-            " b.carrera, b.contacto, b.tipo_beca, b.estado,"
+            " b.carrera, b.contacto, b.tipo_beca, b.estado, b.gestion_ingreso,"
             " s.id AS sid, s.becario_id, s.gestion, s.porcentaje_anterior,"
             " s.porcentaje_gestion, s.horas_becarias, s.materias_en_orden,"
             " s.carpeta_cancelada, s.carta_renovacion"
@@ -154,6 +154,7 @@ def listar_para_panel(db_path: Path = DB_PATH) -> list[tuple[Becario, Optional[S
             id=f["bid"], nombres=f["nombres"], apellidos=f["apellidos"], ci=f["ci"],
             codigo_estudiante=f["codigo_estudiante"], carrera=f["carrera"],
             contacto=f["contacto"], tipo_beca=f["tipo_beca"], estado=f["estado"],
+            gestion_ingreso=f["gestion_ingreso"] if "gestion_ingreso" in f.keys() else "",
         )
         seg = None
         if f["sid"] is not None:

@@ -14,7 +14,7 @@ el resto de modales, vía overlay.ejecutar_con_overlay().
 HU-05: los badges de Horas Becarias y Materias en Orden son clickeables
 y alternan su valor guardándolo en el periodo vigente.
 """
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import Qt, QEvent, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QFormLayout,
@@ -57,12 +57,16 @@ def estilo_estado(estado: str) -> str:
 class FichaBecarioWindow(DialogoBase):
     """Recibe la ficha ya armada por obtener_ficha_completa(). Solo muestra."""
 
+    # (becario_id, campo, nuevo_valor): main la conecta al listado en vivo.
+    cambio_guardado = Signal(int, str, bool)
+
     def __init__(self, parent=None, ficha: dict | None = None):
         super().__init__(parent, modal=True)
         if not ficha or ficha.get("becario") is None:
             raise ValueError("La ficha no existe.")
         self.ficha = ficha
         self._menu_info: dict = {}
+        self._edicion_habilitada = False
         self.setWindowTitle("Ficha del Becario")
         self.setMinimumSize(560, 600)
         self._build_ui()
@@ -82,6 +86,11 @@ class FichaBecarioWindow(DialogoBase):
         layout.setContentsMargins(36, 24, 36, 32)
 
         encabezado = QHBoxLayout()
+        self.btn_editar = QPushButton("Editar", card)
+        self.btn_editar.setObjectName("editarBtn")
+        self.btn_editar.setToolTip("Habilitar edición de badges")
+        self.btn_editar.clicked.connect(self._alternar_edicion)
+        encabezado.addWidget(self.btn_editar)
         encabezado.addStretch(1)
         btn_cerrar_x = QToolButton(card)
         btn_cerrar_x.setObjectName("cerrar")
@@ -176,14 +185,24 @@ class FichaBecarioWindow(DialogoBase):
             ESTILO_BADGE_VERDE if valor_actual else ESTILO_BADGE_ROJO, padre)
         etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
         etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
-        etiqueta.setToolTip("Clic para cambiar")
+        etiqueta.setToolTip("")
         etiqueta.installEventFilter(self)
         self._menu_info[etiqueta] = {"campo": campo, "valor": valor_actual}
         return etiqueta
 
+    def _alternar_edicion(self):
+        """Alterna bloqueo/edición de badges (arranca bloqueada siempre)."""
+        self._edicion_habilitada = not self._edicion_habilitada
+        self.btn_editar.setText(
+            "Terminar edición" if self._edicion_habilitada else "Editar")
+        for etiqueta, info in self._menu_info.items():
+            etiqueta.setToolTip(
+                "Clic para cambiar" if self._edicion_habilitada else "")
+
     def eventFilter(self, obj, event):
         if (event.type() == QEvent.Type.MouseButtonRelease
                 and obj in self._menu_info
+                and self._edicion_habilitada
                 and event.button() == Qt.MouseButton.LeftButton):
             self._mostrar_menu_opciones(obj)
             return True
@@ -234,6 +253,7 @@ class FichaBecarioWindow(DialogoBase):
         info["valor"] = opcion
         etiqueta.setText(_texto_opcion(campo, opcion))
         etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if opcion else ESTILO_BADGE_ROJO)
+        self.cambio_guardado.emit(seg.becario_id, campo, bool(opcion))
 
     def _apply_style(self):
         self.setStyleSheet(f"""
@@ -260,4 +280,9 @@ class FichaBecarioWindow(DialogoBase):
                 border-radius: 8px; padding: 11px;
             }}
             QPushButton#cerrarBtn:hover {{ background-color: {theme.VERDE_LIMA_HOVER}; }}
+            QPushButton#editarBtn {{
+                background-color: transparent; color: {theme.TEXTO_PRINCIPAL};
+                font-size: 13px; font-weight: 700;
+                border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px; padding: 8px 16px;
+            }}
         """)

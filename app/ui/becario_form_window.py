@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from app.services import becario_service
 from app.services.becario_service import BecarioDuplicadoError
+from app.services.gestion_service import obtener_gestion_actual
 from app.ui import theme
 from app.ui.dialogo_base import DialogoBase
 
@@ -86,6 +87,10 @@ class BecarioFormWindow(DialogoBase):
             QRegularExpression("^[0-9]*$"), card)
         self.txt_nombres = QLineEdit(card)
         self.txt_apellidos = QLineEdit(card)
+        self.txt_nombres.editingFinished.connect(
+            lambda: self._aplicar_mayuscula_inicial(self.txt_nombres))
+        self.txt_apellidos.editingFinished.connect(
+            lambda: self._aplicar_mayuscula_inicial(self.txt_apellidos))
         self.txt_ci = QLineEdit(card)
         self.txt_ci.setValidator(validador_digitos)
         self.txt_codigo = QLineEdit(card)
@@ -97,6 +102,13 @@ class BecarioFormWindow(DialogoBase):
         self.cmb_tipo = QComboBox(card)
         self.cmb_tipo.addItems(becario_service.listar_tipos_beca())
         self.cmb_tipo.setMaxVisibleItems(self.cmb_tipo.count())
+        self.cmb_ingreso = QComboBox(card)
+        self.cmb_ingreso.addItem("—", "")
+        for gestion in becario_service.gestiones_ingreso_validas():
+            self.cmb_ingreso.addItem(gestion, gestion)
+        self.cmb_ingreso.setMaxVisibleItems(self.cmb_ingreso.count())
+        self.cmb_ingreso.setCurrentIndex(
+            self.cmb_ingreso.findData(obtener_gestion_actual()))
         self.txt_contacto = QLineEdit(card)
         self.txt_contacto.setValidator(validador_digitos)
         self.txt_contacto.setPlaceholderText("Celular, solo números (opcional)")
@@ -106,6 +118,7 @@ class BecarioFormWindow(DialogoBase):
         form.addRow("Código:", self.txt_codigo)
         form.addRow("Carrera:", self.cmb_carrera)
         form.addRow("Tipo de Beca:", self.cmb_tipo)
+        form.addRow("Gestión de ingreso:", self.cmb_ingreso)
         form.addRow("Contacto:", self.txt_contacto)
         layout.addLayout(form)
 
@@ -145,7 +158,14 @@ class BecarioFormWindow(DialogoBase):
         indice_tipo = self.cmb_tipo.findText(becario.tipo_beca)
         if indice_tipo >= 0:
             self.cmb_tipo.setCurrentIndex(indice_tipo)
+        indice_ingreso = self.cmb_ingreso.findData(becario.gestion_ingreso or "")
+        if indice_ingreso >= 0:
+            self.cmb_ingreso.setCurrentIndex(indice_ingreso)
         self.txt_contacto.setText(becario.contacto)
+
+    def _aplicar_mayuscula_inicial(self, campo: QLineEdit):
+        """Normaliza el campo al salir de él (se ve el resultado de inmediato)."""
+        campo.setText(becario_service.normalizar_nombre_propio(campo.text()))
 
     def _datos_formulario(self) -> dict:
         return {
@@ -155,6 +175,7 @@ class BecarioFormWindow(DialogoBase):
             "codigo_estudiante": self.txt_codigo.text(),
             "carrera": self.cmb_carrera.currentData() or self.cmb_carrera.currentText(),
             "tipo_beca": self.cmb_tipo.currentText(),
+            "gestion_ingreso": self.cmb_ingreso.currentData() or "",
             "contacto": self.txt_contacto.text(),
         }
 

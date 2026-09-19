@@ -96,7 +96,9 @@ def _buscar_y_mostrar_ficha(panel: PanelControlWindow):
     if ficha is None:
         mostrar_notificacion(panel, "No se encontraron resultados.", tipo="error")
         return
-    ejecutar_con_overlay(panel, FichaBecarioWindow(panel, ficha=ficha))
+    ventana_ficha = FichaBecarioWindow(panel, ficha=ficha)
+    ventana_ficha.cambio_guardado.connect(panel.reflejar_cambio_externo)
+    ejecutar_con_overlay(panel, ventana_ficha)
 
 
 def main() -> int:

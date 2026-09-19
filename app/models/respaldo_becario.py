@@ -22,4 +22,5 @@ class RespaldoBecario:
     materias_en_orden: bool = False
     carpeta_cancelada: bool = False
     carta_renovacion: bool = False
+    gestion_ingreso: str = ""
     creado_en: str = ""

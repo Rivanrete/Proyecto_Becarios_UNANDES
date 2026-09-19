@@ -32,6 +32,29 @@ def listar_tipos_beca(db_path: Path = DB_PATH) -> list[str]:
     return [t.nombre for t in tipo_beca_repository.listar_activos(db_path)]
 
 
+GESTION_INGRESO_MINIMA = "I-2019"
+
+
+def _clave_gestion(gestion: str) -> tuple[int, int]:
+    """(año, semestre) para comparar gestiones I-AAAA < II-AAAA < I-(AAAA+1)."""
+    mitad, anio = gestion.split("-", 1)
+    return int(anio), (1 if mitad == "I" else 2)
+
+
+def gestiones_ingreso_validas() -> list[str]:
+    """De I-2019 a la gestión actual, sin futuras (para el desplegable)."""
+    actual = obtener_gestion_actual()
+    validas = []
+    anio = 2019
+    while True:
+        for mitad in ("I", "II"):
+            candidata = f"{mitad}-{anio}"
+            if _clave_gestion(candidata) > _clave_gestion(actual):
+                return validas
+            validas.append(candidata)
+        anio += 1
+
+
 class BecarioDuplicadoError(ValueError):
     """CI o código de estudiante ya registrado. Atributo `campo`: 'ci' o 'codigo_estudiante'."""
 
@@ -44,12 +67,56 @@ class BecarioDuplicadoError(ValueError):
 def _normalizar(datos: dict) -> dict:
     limpio = {k: (str(datos.get(k, "") or "").strip()) for k in
               ("nombres", "apellidos", "ci", "codigo_estudiante", "carrera",
-               "contacto", "tipo_beca")}
+               "contacto", "tipo_beca", "gestion_ingreso")}
     # Acepta sigla ("SIS") o etiqueta del combo ("Ingeniería de Sistemas - SIS").
     if " - " in limpio["carrera"]:
         limpio["carrera"] = limpio["carrera"].rsplit(" - ", 1)[1]
     limpio["carrera"] = limpio["carrera"].upper()
+    limpio["nombres"] = normalizar_nombre_propio(limpio["nombres"])
+    limpio["apellidos"] = normalizar_nombre_propio(limpio["apellidos"])
     return limpio
+
+
+_EXCEPCIONES_NOMBRE = {"de", "del", "la", "las", "los", "y", "e"}
+
+_CARACTERES_NOMBRE_EXTRA = {" ", "-", "'", "’"}
+
+
+def es_nombre_valido(texto: str) -> bool:
+    """Mínimo 2 caracteres; solo letras (tildes, ü, ñ), espacios, guion y apóstrofo."""
+    if len(texto or "") < 2:
+        return False
+    return all(c.isalpha() or c in _CARACTERES_NOMBRE_EXTRA for c in texto)
+
+
+def _capitalizar_parte(palabra: str) -> str:
+    """Primera en mayúscula y resto en minúscula (respeta tildes y ñ)."""
+    return palabra[:1].upper() + palabra[1:].lower() if palabra else palabra
+
+
+def _capitalizar_palabra(palabra: str) -> str:
+    """Capitaliza cada parte separada por guion o apóstrofo."""
+    for separador in ("-", "'", "’"):
+        if separador in palabra:
+            return separador.join(_capitalizar_parte(p) for p in palabra.split(separador))
+    return _capitalizar_parte(palabra)
+
+
+def normalizar_nombre_propio(texto: str) -> str:
+    """Mayúscula inicial por palabra ("ana maría" -> "Ana María").
+
+    Quita espacios de sobra; las excepciones (de, del, la, las, los, y, e)
+    van en minúscula salvo que abran el nombre ("de la Cruz").
+    No agrega ni quita tildes.
+    """
+    normalizadas = []
+    for i, palabra in enumerate((texto or "").split()):
+        base = palabra.lower()
+        if i > 0 and base in _EXCEPCIONES_NOMBRE:
+            normalizadas.append(base)
+        else:
+            normalizadas.append(_capitalizar_palabra(base))
+    return " ".join(normalizadas)
 
 
 def _validar_requeridos(datos: dict, db_path: Path = DB_PATH):
@@ -59,12 +126,18 @@ def _validar_requeridos(datos: dict, db_path: Path = DB_PATH):
         # (Variables, columnas y lógica de validación no cambian.)
         visibles = ["código" if c == "codigo_estudiante" else c for c in faltantes]
         raise ValueError(f"Faltan datos obligatorios: {', '.join(visibles)}.")
+    if datos["nombres"] and not es_nombre_valido(datos["nombres"]):
+        raise ValueError("Nombres no válidos: mínimo 2 letras (tildes, ñ, espacios, guion y apóstrofo).")
+    if datos["apellidos"] and not es_nombre_valido(datos["apellidos"]):
+        raise ValueError("Apellidos no válidos: mínimo 2 letras (tildes, ñ, espacios, guion y apóstrofo).")
     siglas = [c.sigla for c in carrera_repository.listar_activos(db_path)]
     if datos["carrera"] not in siglas:
         raise ValueError(f"Carrera no válida. Use una de: {', '.join(siglas)}.")
     tipos = [t.nombre for t in tipo_beca_repository.listar_activos(db_path)]
     if datos["tipo_beca"] not in tipos:
         raise ValueError(f"Tipo de beca no válido. Use uno de: {', '.join(tipos)}.")
+    if datos["gestion_ingreso"] and datos["gestion_ingreso"] not in gestiones_ingreso_validas():
+        raise ValueError("Gestión de ingreso no válida. Use una del desplegable.")
 
 
 def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
@@ -75,6 +148,8 @@ def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
     """
     limpio = _normalizar(datos)
     _validar_requeridos(limpio, db_path)
+    if not limpio["gestion_ingreso"]:
+        limpio["gestion_ingreso"] = obtener_gestion_actual()
     if becario_repository.existe_ci(limpio["ci"], db_path=db_path):
         raise BecarioDuplicadoError("ci")
     if becario_repository.existe_codigo(limpio["codigo_estudiante"], db_path=db_path):
@@ -269,22 +344,22 @@ def contar_becarios_por_categoria(db_path: Path = DB_PATH) -> list[tuple[str, in
 # Sirven para probar el listado y el futuro filtro por carrera.
 # ---------------------------------------------------------------------------
 _DATOS_EJEMPLO = [
-    # (nombres, apellidos, ci, codigo, carrera, contacto, tipo, estado, %ant, horas, mat, carpeta, carta)
-    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Excelencia Académica", "Activo", "100%", True, True, True, True),
-    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Económica Social", "Activo", "0%", False, False, False, False),
-    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Convenio Interinstitucional", "Activo", "50%", True, False, False, True),
-    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Personal Administrativo", "Activo", "50%", True, True, False, True),
-    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Honorífica Directorio", "Activo", "100%", True, True, True, False),
-    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Social - Ministerio de Educación", "En renovación", "0%", False, True, False, False),
-    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Excelencia Académica", "En renovación", "100%", False, True, False, False),
-    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Económica Social", "Activo", "50%", True, True, True, True),
-    ("Miguel", "Huanca Copa", "7452309", "25034", "LGYH", "71234509", "Convenio Interinstitucional", "Activo", "50%", True, False, True, True),
-    ("Paola", "Ríos Fernández", "6981342", "25108", "LGYH", "71234510", "Personal Administrativo", "Activo", "100%", True, True, True, True),
-    ("Luis", "Copa Ticona", "8234567", "25241", "LGYH", "71234511", "Honorífica Directorio", "Baja/Inactivo", "0%", False, False, False, True),
-    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Social - Ministerio de Educación", "Activo", "100%", True, True, False, True),
-    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Excelencia Académica", "Activo", "50%", False, True, False, False),
-    ("Carolina", "Paredes Flores", "7981234", "27045", "CPU", "71234514", "Económica Social", "Activo", "100%", True, True, True, True),
-    ("Javier", "Ticona Ríos", "6456789", "27190", "CPU", "71234515", "Convenio Interinstitucional", "En renovación", "0%", False, False, False, False),
+    # (nombres, apellidos, ci, codigo, carrera, contacto, tipo, estado, %ant, horas, mat, carpeta, carta, ingreso)
+    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Excelencia Académica", "Activo", "100%", True, True, True, True, "I-2024"),
+    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Económica Social", "Activo", "0%", False, False, False, False, "II-2024"),
+    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Convenio Interinstitucional", "Activo", "50%", True, False, False, True, "I-2025"),
+    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Personal Administrativo", "Activo", "50%", True, True, False, True, "II-2025"),
+    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Honorífica Directorio", "Activo", "100%", True, True, True, False, "I-2026"),
+    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Social - Ministerio de Educación", "En renovación", "0%", False, True, False, False, "II-2026"),
+    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Excelencia Académica", "En renovación", "100%", False, True, False, False, "I-2024"),
+    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Económica Social", "Activo", "50%", True, True, True, True, "II-2024"),
+    ("Miguel", "Huanca Copa", "7452309", "25034", "LGYH", "71234509", "Convenio Interinstitucional", "Activo", "50%", True, False, True, True, "I-2025"),
+    ("Paola", "Ríos Fernández", "6981342", "25108", "LGYH", "71234510", "Personal Administrativo", "Activo", "100%", True, True, True, True, "II-2025"),
+    ("Luis", "Copa Ticona", "8234567", "25241", "LGYH", "71234511", "Honorífica Directorio", "Baja/Inactivo", "0%", False, False, False, True, "I-2026"),
+    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Social - Ministerio de Educación", "Activo", "100%", True, True, False, True, "II-2026"),
+    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Excelencia Académica", "Activo", "50%", False, True, False, False, "I-2024"),
+    ("Carolina", "Paredes Flores", "7981234", "27045", "CPU", "71234514", "Económica Social", "Activo", "100%", True, True, True, True, "I-2025"),
+    ("Javier", "Ticona Ríos", "6456789", "27190", "CPU", "71234515", "Convenio Interinstitucional", "En renovación", "0%", False, False, False, False, "II-2025"),
 ]
 
 
@@ -293,11 +368,11 @@ def asegurar_datos_ejemplo(db_path: Path = DB_PATH) -> int:
     if becario_repository.contar_becarios(db_path) > 0:
         return 0
     for (nombres, apellidos, ci, codigo, carrera, contacto, tipo_beca, estado,
-         porc_ant, horas, mat, carpeta, carta) in _DATOS_EJEMPLO:
+         porc_ant, horas, mat, carpeta, carta, ingreso) in _DATOS_EJEMPLO:
         becario = becario_repository.insertar_becario(
             Becario(id=None, nombres=nombres, apellidos=apellidos, ci=ci,
                     codigo_estudiante=codigo, carrera=carrera, contacto=contacto,
-                    tipo_beca=tipo_beca, estado=estado),
+                    tipo_beca=tipo_beca, estado=estado, gestion_ingreso=ingreso),
             db_path,
         )
         seguimiento_repository.crear_seguimiento(
