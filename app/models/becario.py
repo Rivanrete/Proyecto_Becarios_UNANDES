@@ -19,7 +19,7 @@ class Becario:
     carrera: str
     contacto: str = ""
     tipo_beca: str = ""
-    estado: str = "Activo"
+    estado: str = "En renovación"
 
     def __post_init__(self) -> None:
         self.nombres = self.nombres.strip()
@@ -29,4 +29,4 @@ class Becario:
         self.carrera = self.carrera.strip().upper()
         self.contacto = self.contacto.strip()
         self.tipo_beca = self.tipo_beca.strip()
-        self.estado = self.estado.strip() or "Activo"
+        self.estado = self.estado.strip() or "En renovación"

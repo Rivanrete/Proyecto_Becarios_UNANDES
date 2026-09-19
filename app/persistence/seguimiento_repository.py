@@ -74,6 +74,46 @@ def obtener_ultima_gestion(db_path: Path = DB_PATH) -> Optional[str]:
     return fila["gestion"] if fila is not None else None
 
 
+def eliminar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> int:
+    """Borra los seguimientos del becario (hijos primero por integridad)."""
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute(
+            "DELETE FROM seguimiento_becario WHERE becario_id = ?", (becario_id,)
+        )
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()
+
+
+def listar_gestiones(becario_id: int, db_path: Path = DB_PATH) -> list[str]:
+    """Gestiones del becario de la primera a la más reciente (orden de registro)."""
+    conn = get_connection(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT gestion FROM seguimiento_becario WHERE becario_id = ? ORDER BY id",
+            (becario_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [fila["gestion"] for fila in filas]
+
+
+def listar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> list[SeguimientoBecario]:
+    conn = get_connection(db_path)
+    try:
+        filas = conn.execute(
+            "SELECT id, becario_id, gestion, porcentaje_anterior, porcentaje_gestion,"
+            " horas_becarias, materias_en_orden, carpeta_cancelada, carta_renovacion"
+            " FROM seguimiento_becario WHERE becario_id = ? ORDER BY id",
+            (becario_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [_mapear(f) for f in filas]
+
+
 def _mapear(fila) -> SeguimientoBecario:
     return SeguimientoBecario(
         id=fila["id"],

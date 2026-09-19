@@ -34,8 +34,10 @@ _DIR_ASSETS = rutas.assets_dir()
 
 
 def _ruta_escudo() -> Path | None:
-    """Retorna la ruta del escudo si existe (.png, .jpg o .jpeg), o None."""
-    for nombre in ("escudo_unandes.png", "escudo_unandes.jpg", "escudo_unandes.jpeg"):
+    """Retorna la ruta del logo si existe (logo nuevo primero, escudo anterior de respaldo)."""
+    for nombre in ("logo-horizontal-unandes.png", "logo-horizontal-unandes.jpg",
+                   "logo-horizontal-unandes.jpeg",
+                   "escudo_unandes.png", "escudo_unandes.jpg", "escudo_unandes.jpeg"):
         ruta = _DIR_ASSETS / nombre
         try:
             if ruta.is_file():
@@ -128,18 +130,19 @@ class LoginWindow(QDialog):
         card_layout.setSpacing(12)
         card_layout.setContentsMargins(40, 36, 40, 36)
 
-        # Escudo UNANDES centrado arriba. Si el archivo falta, el espacio
-        # queda vacío: nunca rompe la app ni muestra texto de error.
+        # Logo UNANDES centrado arriba. Escala ajustada al contenedor
+        # (ancho y alto máximos, KeepAspectRatio): nunca recorta ni desborda.
+        # Si el archivo falta, el espacio queda vacío sin romper la app.
         self.lbl_escudo = QLabel(card)
         self.lbl_escudo.setObjectName("escudo")
         self.lbl_escudo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_escudo.setFixedHeight(120)
         try:
             ruta = _ruta_escudo()
             pix = QPixmap(str(ruta)) if ruta is not None else QPixmap()
             if not pix.isNull():
                 self.lbl_escudo.setPixmap(
-                    pix.scaledToHeight(120, Qt.TransformationMode.SmoothTransformation)
+                    pix.scaled(440, 120, Qt.AspectRatioMode.KeepAspectRatio,
+                               Qt.TransformationMode.SmoothTransformation)
                 )
         except Exception:
             pass

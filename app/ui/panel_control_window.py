@@ -13,11 +13,13 @@ Búsqueda en vivo: el campo filtra por coincidencia parcial (contiene)
 en código, nombres y apellidos, sin importar mayúsculas ni tildes.
 """
 import unicodedata
+import webbrowser
 
 from PySide6.QtCore import Qt, QEvent, Signal
 from PySide6.QtGui import QColor, QCursor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -26,6 +28,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QPushButton,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -35,9 +38,10 @@ from PySide6.QtWidgets import (
 from app.models.seguimiento_becario import SeguimientoBecario
 from app.models.usuario import Usuario
 from app.services import becario_service
+from app.services import gestion_service
 from app.services.auth_service import SesionActual
 from app.ui import theme
-from app.ui.notificacion import mostrar_notificacion
+from app.ui.notificacion import mostrar_notificacion, pedir_confirmacion
 
 COLUMNAS = [
     "N.",
@@ -49,8 +53,8 @@ COLUMNAS = [
     "Gestión",
     "Horas Becarias",
     "Materias en Orden",
-    "Carpeta de Becas Cancelada",
-    "Carta de Renovación Presentada",
+    "Carpeta Cancelada",
+    "Carta Renovación",
     "Estado",
 ]
 
@@ -72,8 +76,46 @@ def estilo_estado(estado: str) -> str:
         return ESTILO_BADGE_ROJO
     return ESTILO_BADGE_NEUTRO
 
+
+def _opciones_campo(campo: str) -> list:
+    """Opciones válidas del desplegable: coinciden con lo que usa el sistema."""
+    if campo == "estado":
+        return list(becario_service.ESTADOS_BECARIO)
+    return [True, False]
+
+
+def _texto_opcion(campo: str, valor) -> str:
+    """Etiqueta visible de cada opción (misma que ya mostraban los badges)."""
+    if campo == "horas_becarias":
+        return "Cumplió" if valor else "No cumplió"
+    if campo == "estado":
+        return str(valor)
+    return "Sí" if valor else "No"
+
+
+def _estilo_opcion(campo: str, valor) -> str:
+    if campo == "estado":
+        return estilo_estado(valor)
+    return ESTILO_BADGE_VERDE if valor else ESTILO_BADGE_ROJO
+
 TEXTO_BUSQUEDA = "Buscar por código Ej: 23718 o por nombre Beymar Condori Quispe"
 TEXTO_SIN_RESULTADOS = "Ninguna coincidencia"
+
+# Índice de la columna Código en la tabla principal (doble clic = perfil SIAC).
+INDICE_COLUMNA_CODIGO = 4
+URL_PERFIL_SIAC = "https://udelosandes.com/siac/estudiante/informacion_academica/{codigo}/218"
+
+
+def abrir_perfil_siac(codigo: str):
+    """Abre el perfil SIAC del código en el navegador predeterminado."""
+    webbrowser.open(URL_PERFIL_SIAC.format(codigo=(codigo or "").strip()))
+
+COLUMNAS_INACTIVOS = ["N.", "Apellidos", "Nombres", "CI", "Código", "Carrera", "", ""]
+
+COLUMNAS_RESPALDO = ["N.", "Carrera", "Apellidos", "Nombres", "Código",
+                     "% Anterior", "Gestión", "Horas Becarias", "Materias en Orden",
+                     "Carpeta Cancelada", "Carta Renovación",
+                     "Estado"]
 
 
 def _normalizar_texto(texto: str) -> str:
@@ -98,9 +140,10 @@ class PanelControlWindow(QMainWindow):
     nuevo_becario_solicitado = Signal()
     becario_editar_solicitado = Signal(int)
 
-    # Ítems del sidebar. Solo "Panel de Control" por ahora; las opciones
-    # futuras (Becarios, Reportes, Configuración) se agregan aquí en su HU.
-    ITEMS_SIDEBAR = ["Panel de Control"]
+    # Ítems del sidebar como (etiqueta, página). El orden visual es
+    # independiente del índice de página en el QStackedWidget.
+    # Las opciones futuras (Reportes, Configuración) se agregan aquí en su HU.
+    ITEMS_SIDEBAR = [("Panel de Control", 0), ("Respaldos", 2), ("Becarios Inactivos", 1)]
 
     def __init__(self, usuario: Usuario | None, parent=None):
         if usuario is None or not SesionActual.activa():
@@ -111,9 +154,10 @@ class PanelControlWindow(QMainWindow):
         self.setMinimumSize(900, 600)
         self._ids_fila: list[int] = []
         self._filas_completas: list = []
-        self._toggle_info: dict = {}
-        self._estado_labels: dict = {}
+        self._inactivos_completos: list = []
+        self._menu_info: dict = {}
         self._categoria_filtro: str | None = None
+        self._botones_sidebar: list = []
         self._build_ui()
         self._apply_style()
         self.refrescar()
@@ -184,8 +228,44 @@ class PanelControlWindow(QMainWindow):
         # Búsqueda en vivo: filtra mientras se escribe (sin Enter ni botón).
         self.txt_busqueda.textChanged.connect(self._al_escribir)
 
-        layout_raiz.addWidget(contenido, 1)
+        self.paginas = QStackedWidget(raiz)
+        self.paginas.addWidget(contenido)
+        self.paginas.addWidget(self._construir_pagina_inactivos())
+        self.paginas.addWidget(self._construir_pagina_respaldos())
+        layout_raiz.addWidget(self.paginas, 1)
         self.setCentralWidget(raiz)
+
+    def _construir_pagina_inactivos(self) -> QWidget:
+        """Segunda página: solo Baja/Inactivo, con botón Eliminar por fila."""
+        pagina = QWidget()
+        layout = QVBoxLayout(pagina)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(14)
+
+        titulo = QLabel("Becarios Inactivos")
+        titulo.setObjectName("tituloSeccion")
+        layout.addWidget(titulo)
+
+        self.tabla_inactivos = QTableWidget(0, len(COLUMNAS_INACTIVOS))
+        self.tabla_inactivos.setHorizontalHeaderLabels(COLUMNAS_INACTIVOS)
+        self.tabla_inactivos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabla_inactivos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla_inactivos.verticalHeader().setVisible(False)
+        self.tabla_inactivos.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.tabla_inactivos, 1)
+
+        # Acción masiva separada de las filas (espacio + alineada a la derecha).
+        layout.addSpacing(12)
+        fila_masiva = QHBoxLayout()
+        fila_masiva.addStretch(1)
+        self.btn_eliminar_todos = QPushButton("Eliminar todos")
+        self.btn_eliminar_todos.setObjectName("eliminarTodos")
+        self.btn_eliminar_todos.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_eliminar_todos.clicked.connect(self._eliminar_todos)
+        fila_masiva.addWidget(self.btn_eliminar_todos)
+        layout.addLayout(fila_masiva)
+        return pagina
 
     def _construir_sidebar(self) -> QWidget:
         lateral = QFrame()
@@ -201,13 +281,13 @@ class PanelControlWindow(QMainWindow):
         layout.addWidget(marca)
         layout.addSpacing(20)
 
-        for item in self.ITEMS_SIDEBAR:
-            etiqueta = QLabel(item)
-            etiqueta.setObjectName("itemActivo")
-            etiqueta.setAlignment(
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            )
-            layout.addWidget(etiqueta)
+        for indice, (item, pagina) in enumerate(self.ITEMS_SIDEBAR):
+            boton = QPushButton(item, lateral)
+            boton.setObjectName("itemActivo" if pagina == 0 else "item")
+            boton.setCursor(Qt.CursorShape.PointingHandCursor)
+            boton.clicked.connect(lambda checked=False, i=pagina: self._cambiar_vista(i))
+            layout.addWidget(boton)
+            self._botones_sidebar.append(boton)
 
         layout.addStretch(1)
         pie = QLabel(f"Sesión: {self.usuario.nombre_usuario}")
@@ -217,9 +297,81 @@ class PanelControlWindow(QMainWindow):
         layout.addWidget(pie)
         return lateral
 
+    def _construir_pagina_respaldos(self) -> QWidget:
+        """Tercera página: snapshots de gestiones cerradas, solo lectura."""
+        pagina = QWidget()
+        layout = QVBoxLayout(pagina)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(14)
+
+        titulo = QLabel("Respaldos")
+        titulo.setObjectName("tituloSeccion")
+        layout.addWidget(titulo)
+
+        fila_gestion = QHBoxLayout()
+        etiqueta = QLabel("Gestión respaldada:")
+        etiqueta.setObjectName("etiquetaRespaldo")
+        fila_gestion.addWidget(etiqueta)
+        self.cmb_respaldo = QComboBox()
+        self.cmb_respaldo.setObjectName("comboRespaldo")
+        self.cmb_respaldo.currentIndexChanged.connect(
+            lambda _i: self._cargar_respaldo(self.cmb_respaldo.currentText()))
+        fila_gestion.addWidget(self.cmb_respaldo, 1)
+        layout.addLayout(fila_gestion)
+
+        self.tabla_respaldos = QTableWidget(0, len(COLUMNAS_RESPALDO))
+        self.tabla_respaldos.setHorizontalHeaderLabels(COLUMNAS_RESPALDO)
+        self.tabla_respaldos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabla_respaldos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabla_respaldos.verticalHeader().setVisible(False)
+        cabecera = self.tabla_respaldos.horizontalHeader()
+        for i in range(len(COLUMNAS_RESPALDO) - 2):
+            cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        for i in (len(COLUMNAS_RESPALDO) - 2, len(COLUMNAS_RESPALDO) - 1):
+            cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.tabla_respaldos, 1)
+        return pagina
+
+    def _cargar_respaldo(self, gestion: str):
+        """Puebla la tabla con el snapshot (celdas de texto y badges fijos)."""
+        self.tabla_respaldos.setRowCount(0)
+        if not gestion:
+            return
+        for i, r in enumerate(gestion_service.leer_respaldo(gestion), start=1):
+            fila = self.tabla_respaldos.rowCount()
+            self.tabla_respaldos.insertRow(fila)
+            for columna, valor in enumerate(
+                    [str(i), r.carrera, r.apellidos, r.nombres, r.codigo_estudiante,
+                     r.porcentaje_anterior, r.gestion_respaldada]):
+                item = QTableWidgetItem(valor)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tabla_respaldos.setItem(fila, columna, item)
+            for columna, texto, positivo in (
+                    (7, "Cumplió" if r.horas_becarias else "No cumplió", r.horas_becarias),
+                    (8, "Sí" if r.materias_en_orden else "No", r.materias_en_orden),
+                    (9, "Sí" if r.carpeta_cancelada else "No", r.carpeta_cancelada),
+                    (10, "Sí" if r.carta_renovacion else "No", r.carta_renovacion)):
+                etiqueta = QLabel(texto)
+                etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                etiqueta.setStyleSheet(
+                    ESTILO_BADGE_VERDE if positivo else ESTILO_BADGE_ROJO)
+                self.tabla_respaldos.setCellWidget(fila, columna, etiqueta)
+            estado = QLabel(r.estado)
+            estado.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            estado.setStyleSheet(estilo_estado(r.estado))
+            self.tabla_respaldos.setCellWidget(fila, 11, estado)
+
+    def _cambiar_vista(self, indice: int):
+        """Navegación del sidebar (0 = listado, 1 = inactivos, 2 = respaldos)."""
+        self.paginas.setCurrentIndex(indice)
+        for boton, (_etiqueta, pagina) in zip(self._botones_sidebar, self.ITEMS_SIDEBAR):
+            boton.setObjectName("itemActivo" if pagina == indice else "item")
+        self._apply_style()
+
     # -- datos (fuente real: JOIN becario + seguimiento_becario) ------------
     def refrescar(self):
-        """Recarga la tabla desde la base de datos (respeta los filtros)."""
+        """Recarga ambas vistas (respeta los filtros). El listado principal
+        excluye Baja/Inactivo; esos van a la página de inactivos."""
         self._filas_completas = [
             (b.id, b.carrera, b.apellidos, b.nombres, b.codigo_estudiante,
              seg if seg is not None else SeguimientoBecario(
@@ -229,12 +381,125 @@ class PanelControlWindow(QMainWindow):
              b.tipo_beca,
              b.estado)
             for b, seg in becario_service.listar_para_panel()
+            if b.estado != "Baja/Inactivo"
+        ]
+        self._inactivos_completos = [
+            (b.id, b.apellidos, b.nombres, b.ci, b.codigo_estudiante, b.carrera)
+            for b, _seg in becario_service.listar_inactivos()
         ]
         self.aplicar_filtro(self.txt_busqueda.text())
+        self._filtrar_inactivos(self.txt_busqueda.text())
+        actual = self.cmb_respaldo.currentText()
+        gestiones = gestion_service.gestiones_respaldadas()
+        self.cmb_respaldo.blockSignals(True)
+        self.cmb_respaldo.clear()
+        self.cmb_respaldo.addItems(gestiones)
+        if actual in gestiones:
+            self.cmb_respaldo.setCurrentText(actual)
+        self.cmb_respaldo.blockSignals(False)
+        self._cargar_respaldo(self.cmb_respaldo.currentText())
 
     def _al_escribir(self, texto: str):
         """Filtra en tiempo real con cada tecla (coincidencia parcial)."""
         self.aplicar_filtro(texto)
+        self._filtrar_inactivos(texto)
+
+    def _filtrar_inactivos(self, texto: str):
+        """Mismo criterio parcial sobre código/nombres/apellidos (sin categoría)."""
+        consulta = _normalizar_texto(texto.strip())
+        if not consulta:
+            self._cargar_inactivos(list(self._inactivos_completos))
+            return
+        self._cargar_inactivos([
+            fila for fila in self._inactivos_completos
+            if consulta in _normalizar_texto(fila[4])
+            or consulta in _normalizar_texto(fila[3])
+            or consulta in _normalizar_texto(fila[2])
+            or consulta in _normalizar_texto(f"{fila[3]} {fila[2]}")
+            or consulta in _normalizar_texto(f"{fila[2]} {fila[3]}")
+        ])
+
+    def _cargar_inactivos(self, filas):
+        """Puebla la tabla de inactivos. `filas`: (id, apellidos, nombres, ci, codigo, carrera)."""
+        self.tabla_inactivos.setRowCount(0)
+        self.btn_eliminar_todos.setVisible(len(filas) > 0)
+        for i, (becario_id, apellidos, nombres, ci, codigo, carrera) in enumerate(filas, start=1):
+            fila = self.tabla_inactivos.rowCount()
+            self.tabla_inactivos.insertRow(fila)
+            for columna, valor in enumerate(
+                    [str(i), apellidos, nombres, ci, codigo, carrera]):
+                item = QTableWidgetItem(valor)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.tabla_inactivos.setItem(fila, columna, item)
+            boton = QPushButton("Eliminar")
+            boton.setObjectName("eliminar")
+            boton.clicked.connect(
+                lambda checked=False, bid=becario_id,
+                nombre=f"{nombres} {apellidos}": self._eliminar_becario(bid, nombre))
+            self.tabla_inactivos.setCellWidget(fila, 6, boton)
+            btn_reactivar = QPushButton("Reactivar")
+            btn_reactivar.setObjectName("reactivar")
+            btn_reactivar.clicked.connect(
+                lambda checked=False, bid=becario_id,
+                nombre=f"{nombres} {apellidos}": self._reactivar_becario(bid, nombre))
+            self.tabla_inactivos.setCellWidget(fila, 7, btn_reactivar)
+        if self.tabla_inactivos.rowCount() == 0:
+            fila = 0
+            self.tabla_inactivos.insertRow(fila)
+            self.tabla_inactivos.setSpan(fila, 0, 1, len(COLUMNAS_INACTIVOS))
+            item = QTableWidgetItem(TEXTO_SIN_RESULTADOS)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            fuente = QFont()
+            fuente.setItalic(True)
+            item.setFont(fuente)
+            item.setForeground(QColor(theme.TEXTO_GRIS))
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            self.tabla_inactivos.setItem(fila, 0, item)
+
+    def _reactivar_becario(self, becario_id: int, nombre: str):
+        """Vuelve a 'En renovación' (igual que un becario nuevo). Sin confirmación."""
+        try:
+            becario_service.actualizar_estado(becario_id, "En renovación")
+        except Exception as e:
+            mostrar_notificacion(self, f"No se pudo reactivar: {e}", tipo="error")
+            return
+        self.refrescar()
+        mostrar_notificacion(
+            self, f"{nombre} vuelve a estar activo (En renovación).", tipo="exito")
+
+    def _eliminar_todos(self):
+        """Vacía TODOS los inactivos (conjunto completo, aunque haya texto filtrando).
+
+        El mensaje dice el N exacto para que no haya sorpresas.
+        """
+        total = len(self._inactivos_completos)
+        if total == 0:
+            return
+        if not pedir_confirmacion(
+                self, f"¿Eliminar permanentemente a los {total} becarios"
+                      " inactivos? Esta acción no se puede deshacer."):
+            return
+        try:
+            eliminados = becario_service.eliminar_inactivos()
+        except Exception as e:
+            mostrar_notificacion(self, f"No se pudo eliminar: {e}", tipo="error")
+            return
+        self.refrescar()
+        mostrar_notificacion(
+            self, f"Se eliminaron {eliminados} becarios inactivos.", tipo="exito")
+
+    def _eliminar_becario(self, becario_id: int, nombre: str):
+        """Pide confirmación explícita y elimina (becario + seguimientos)."""
+        if not pedir_confirmacion(
+                self, f"¿Eliminar permanentemente a {nombre}? Esta acción no se puede deshacer."):
+            return
+        try:
+            becario_service.eliminar_becario(becario_id)
+        except Exception as e:
+            mostrar_notificacion(self, f"No se pudo eliminar: {e}", tipo="error")
+            return
+        self.refrescar()
+        mostrar_notificacion(self, "Becario eliminado correctamente.", tipo="exito")
 
     def aplicar_filtro(self, texto: str):
         """Aplica texto Y categoría a la vez: solo pasa la intersección.
@@ -266,8 +531,7 @@ class PanelControlWindow(QMainWindow):
         real o None si aún no tiene registro, tipo_beca, estado)."""
         self.tabla.setRowCount(0)
         self._ids_fila = []
-        self._toggle_info = {}
-        self._estado_labels = {}
+        self._menu_info = {}
         for i, (becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo, estado) in enumerate(filas, start=1):
             fila = self.tabla.rowCount()
             self.tabla.insertRow(fila)
@@ -279,19 +543,19 @@ class PanelControlWindow(QMainWindow):
             self._celda_texto(fila, 4, codigo)
             self._celda_texto(fila, 5, seg.porcentaje_anterior)
             self._celda_texto(fila, 6, gestion)
-            self._celda_badge_toggle(fila, 7, "Cumplió" if seg.horas_becarias else "No cumplió",
-                                     seg.horas_becarias, becario_id, "horas_becarias",
+            self._celda_badge_menu(fila, 7, becario_id, "horas_becarias",
+                                     seg.horas_becarias,
                                      real.gestion if real is not None else None)
-            self._celda_badge_toggle(fila, 8, "Sí" if seg.materias_en_orden else "No",
-                                     seg.materias_en_orden, becario_id, "materias_en_orden",
+            self._celda_badge_menu(fila, 8, becario_id, "materias_en_orden",
+                                     seg.materias_en_orden,
                                      real.gestion if real is not None else None)
-            self._celda_badge_toggle(fila, 9, "Sí" if seg.carpeta_cancelada else "No",
-                                     seg.carpeta_cancelada, becario_id, "carpeta_cancelada",
+            self._celda_badge_menu(fila, 9, becario_id, "carpeta_cancelada",
+                                     seg.carpeta_cancelada,
                                      real.gestion if real is not None else None)
-            self._celda_badge_toggle(fila, 10, "Sí" if seg.carta_renovacion else "No",
-                                     seg.carta_renovacion, becario_id, "carta_renovacion",
+            self._celda_badge_menu(fila, 10, becario_id, "carta_renovacion",
+                                     seg.carta_renovacion,
                                      real.gestion if real is not None else None)
-            self._celda_badge_estado(fila, 11, becario_id, estado)
+            self._celda_badge_menu(fila, 11, becario_id, "estado", estado, None)
         if self.tabla.rowCount() == 0:
             self._fila_sin_resultados()
 
@@ -324,104 +588,159 @@ class PanelControlWindow(QMainWindow):
         )
         self.tabla.setCellWidget(fila, columna, etiqueta)
 
-    def _celda_badge_toggle(self, fila: int, columna: int, texto: str, positivo: bool,
-                            becario_id: int, campo: str, gestion: str | None):
-        """Badge clickeable HU-05: mano, tooltip y alternancia al clic."""
-        etiqueta = QLabel(texto)
+    def _celda_badge_menu(self, fila: int, columna: int, becario_id: int,
+                            campo: str, valor_actual, gestion: str | None):
+        """Badge clickeable: mano, tooltip y desplegable con opciones válidas."""
+        etiqueta = QLabel(_texto_opcion(campo, valor_actual))
         etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        etiqueta.setStyleSheet(
-            ESTILO_BADGE_VERDE if positivo else ESTILO_BADGE_ROJO
-        )
+        etiqueta.setStyleSheet(_estilo_opcion(campo, valor_actual))
         etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
         etiqueta.setToolTip("Clic para cambiar")
         etiqueta.installEventFilter(self)
-        self._toggle_info[etiqueta] = {
+        self._menu_info[etiqueta] = {
             "becario_id": becario_id, "campo": campo,
-            "valor": positivo, "gestion": gestion,
+            "valor": valor_actual, "gestion": gestion,
         }
         self.tabla.setCellWidget(fila, columna, etiqueta)
 
     def eventFilter(self, obj, event):
         if (event.type() == QEvent.Type.MouseButtonRelease
-                and event.button() == Qt.MouseButton.LeftButton):
-            if obj in self._toggle_info:
-                self._alternar_campo(obj)
-                return True
-            if obj in self._estado_labels:
-                self._mostrar_menu_estado(obj)
-                return True
+                and event.button() == Qt.MouseButton.LeftButton
+                and obj in self._menu_info):
+            self._mostrar_menu_opciones(obj)
+            return True
         return super().eventFilter(obj, event)
 
-    def _alternar_campo(self, etiqueta: QLabel):
-        """Alterna el badge y guarda en BD con feedback inmediato (sin recargar)."""
-        info = self._toggle_info.get(etiqueta)
+    def _construir_menu_opciones(self, etiqueta: QLabel):
+        """Arma el desplegable (sin mostrarlo): una acción por opción válida,
+        marcada la actual. Cerrar sin elegir no cambia nada."""
+        info = self._menu_info.get(etiqueta)
+        menu = QMenu(self)
+        menu.setObjectName("menuFiltrar")  # reutiliza el estilo del dropdown
+        if info is None:
+            return menu
+        for opcion in _opciones_campo(info["campo"]):
+            accion = menu.addAction(_texto_opcion(info["campo"], opcion))
+            accion.setCheckable(True)
+            accion.setChecked(opcion == info["valor"])
+            accion.triggered.connect(
+                lambda checked=False, o=opcion: self._elegir_opcion(etiqueta, o)
+            )
+        return menu
+
+    def _mostrar_menu_opciones(self, etiqueta: QLabel):
+        self._construir_menu_opciones(etiqueta).exec(QCursor.pos())
+
+    def _elegir_opcion(self, etiqueta: QLabel, opcion):
+        """Guarda la opción elegida y refleja el cambio sin recargar todo.
+
+        Vía rápida: actualiza la celda en su sitio (texto + estilo
+        idénticos) y la caché de filas. Solo el pase a "Baja/Inactivo"
+        toca la página de inactivos (quitar la fila aquí y recargarla
+        allá). Sin cambios de aspecto ni de comportamiento del menú:
+        cerrar sin elegir no dispara esto y conserva el valor anterior.
+        """
+        info = self._menu_info.get(etiqueta)
         if info is None:
             return
-        nuevo = not info["valor"]
+        if opcion == info["valor"]:
+            return
         try:
-            if info["campo"] == "horas_becarias":
-                becario_service.actualizar_horas_becarias(
-                    info["becario_id"], info["gestion"], nuevo)
-                texto = "Cumplió" if nuevo else "No cumplió"
-            elif info["campo"] == "materias_en_orden":
-                becario_service.actualizar_materias_en_orden(
-                    info["becario_id"], info["gestion"], nuevo)
-                texto = "Sí" if nuevo else "No"
-            elif info["campo"] == "carpeta_cancelada":
-                becario_service.actualizar_carpeta_cancelada(
-                    info["becario_id"], info["gestion"], nuevo)
-                texto = "Sí" if nuevo else "No"
+            campo, bid = info["campo"], info["becario_id"]
+            if campo == "horas_becarias":
+                becario_service.actualizar_horas_becarias(bid, info["gestion"], opcion)
+            elif campo == "materias_en_orden":
+                becario_service.actualizar_materias_en_orden(bid, info["gestion"], opcion)
+            elif campo == "carpeta_cancelada":
+                becario_service.actualizar_carpeta_cancelada(bid, info["gestion"], opcion)
+            elif campo == "carta_renovacion":
+                becario_service.actualizar_carta_renovacion(bid, info["gestion"], opcion)
             else:
-                becario_service.actualizar_carta_renovacion(
-                    info["becario_id"], info["gestion"], nuevo)
-                texto = "Sí" if nuevo else "No"
+                becario_service.actualizar_estado(bid, opcion)
         except Exception as e:
             mostrar_notificacion(self, f"No se pudo guardar el cambio: {e}", tipo="error")
             return
-        info["valor"] = nuevo
-        etiqueta.setText(texto)
-        etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if nuevo else ESTILO_BADGE_ROJO)
+        self._reflejar_cambio_en_listado(etiqueta, info["campo"], info["becario_id"], opcion, info)
 
-    def _celda_badge_estado(self, fila: int, columna: int, becario_id: int, estado: str):
-        """Badge de Estado HU-03: clickeable, abre popup con las 3 opciones."""
-        etiqueta = QLabel(estado)
-        etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        etiqueta.setStyleSheet(estilo_estado(estado))
-        etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
-        etiqueta.setToolTip("Clic para cambiar el estado")
-        etiqueta.installEventFilter(self)
-        self._estado_labels[etiqueta] = {"becario_id": becario_id, "estado": estado}
-        self.tabla.setCellWidget(fila, columna, etiqueta)
-
-    def _mostrar_menu_estado(self, etiqueta: QLabel):
-        """Popup inline en la celda con los 3 estados; guarda al elegir."""
-        info = self._estado_labels.get(etiqueta)
-        if info is None:
+    def _reflejar_cambio_en_listado(self, etiqueta: QLabel, campo: str,
+                                    becario_id: int, nuevo_valor, info: dict):
+        """Actualiza la celda/fila afectada sin reconstruir la tabla."""
+        if campo == "estado":
+            self._reflejar_cambio_estado(etiqueta, becario_id, nuevo_valor)
             return
-        menu = QMenu(self)
-        menu.setObjectName("menuFiltrar")  # reutiliza el estilo del dropdown
-        for estado in becario_service.ESTADOS_BECARIO:
-            accion = menu.addAction(estado)
-            accion.setCheckable(True)
-            accion.setChecked(info["estado"] == estado)
-            accion.triggered.connect(
-                lambda checked=False, e=estado: self._elegir_estado(etiqueta, e)
-            )
-        menu.exec(QCursor.pos())
-
-    def _elegir_estado(self, etiqueta: QLabel, estado: str):
-        """Guarda el estado y actualiza el badge en pantalla (sin recargar)."""
-        info = self._estado_labels.get(etiqueta)
-        if info is None:
+        if info.get("gestion") is None or info.get("gestion") == "—":
+            self.refrescar()  # caso raro sin seguimiento: recarga completa
             return
+        for fila in self._filas_completas:
+            if fila[0] == becario_id:
+                for seg in (fila[5], fila[7]):
+                    if seg is not None:
+                        setattr(seg, campo, bool(nuevo_valor))
+                break
+        else:
+            self.refrescar()
+            return
+        etiqueta.setText(_texto_opcion(campo, nuevo_valor))
+        etiqueta.setStyleSheet(_estilo_opcion(campo, nuevo_valor))
+        info["valor"] = nuevo_valor
+
+    def _reflejar_cambio_estado(self, etiqueta: QLabel, becario_id: int, nuevo_estado: str):
+        """Refleja el cambio de estado: badge en sitio, o salida a inactivos."""
+        indice_cache = next(
+            (i for i, fila in enumerate(self._filas_completas) if fila[0] == becario_id), None)
+        if indice_cache is None:
+            self.refrescar()
+            return
+        if nuevo_estado == "Baja/Inactivo":
+            self._filas_completas.pop(indice_cache)
+            fila_visible = self._indice_visible_de_becario(becario_id)
+            if fila_visible is not None:
+                self._olvidar_badges_de_fila(fila_visible)
+                self.tabla.removeRow(fila_visible)
+                self._ids_fila.pop(fila_visible)
+                self._renumerar_columna_n()
+                if not self._ids_fila:
+                    self._fila_sin_resultados()
+            self._recargar_inactivos()
+            return
+        fila = self._filas_completas[indice_cache]
+        self._filas_completas[indice_cache] = (
+            fila[0], fila[1], fila[2], fila[3], fila[4], fila[5],
+            fila[6], fila[7], fila[8], nuevo_estado)
+        etiqueta.setText(_texto_opcion("estado", nuevo_estado))
+        etiqueta.setStyleSheet(_estilo_opcion("estado", nuevo_estado))
+        self._menu_info[etiqueta]["valor"] = nuevo_estado
+
+    def _indice_visible_de_becario(self, becario_id: int) -> int | None:
+        """Fila visible del becario en la tabla (None si el filtro la oculta)."""
         try:
-            becario_service.actualizar_estado(info["becario_id"], estado)
-        except Exception as e:
-            mostrar_notificacion(self, f"No se pudo guardar el estado: {e}", tipo="error")
+            return self._ids_fila.index(becario_id)
+        except ValueError:
+            return None
+
+    def _olvidar_badges_de_fila(self, fila_visible: int):
+        """Limpia el registro del menú de los 5 badges de la fila eliminada."""
+        for columna in (7, 8, 9, 10, 11):
+            insignia = self.tabla.cellWidget(fila_visible, columna)
+            if insignia in self._menu_info:
+                del self._menu_info[insignia]
+
+    def _renumerar_columna_n(self):
+        """Reescribe la columna N. (1..n) tras quitar una fila visible."""
+        if len(self._ids_fila) != self.tabla.rowCount():
             return
-        info["estado"] = estado
-        etiqueta.setText(estado)
-        etiqueta.setStyleSheet(estilo_estado(estado))
+        for numero in range(self.tabla.rowCount()):
+            celda = self.tabla.item(numero, 0)
+            if celda is not None:
+                celda.setText(str(numero + 1))
+
+    def _recargar_inactivos(self):
+        """Actualiza solo la página de inactivos (barato: 1 consulta + filtro)."""
+        self._inactivos_completos = [
+            (b.id, b.apellidos, b.nombres, b.ci, b.codigo_estudiante, b.carrera)
+            for b, _seg in becario_service.listar_inactivos()
+        ]
+        self._filtrar_inactivos(self.txt_busqueda.text())
 
     def _mostrar_menu_filtrar(self):
         """HU-06 (conteo) + funcionalidad adelantada de HU-07 (filtro por categoría).
@@ -475,10 +794,17 @@ class PanelControlWindow(QMainWindow):
         self.btn_filtrar.setText(etiqueta)
         self.aplicar_filtro(self.txt_busqueda.text())
 
-    def _abrir_editar(self, fila: int, _columna: int):
-        """Doble clic en una fila: solicita edición del becario (HU-02)."""
-        if 0 <= fila < len(self._ids_fila):
-            self.becario_editar_solicitado.emit(self._ids_fila[fila])
+    def _abrir_editar(self, fila: int, columna: int):
+        """Doble clic en una fila: columna Código abre solo el SIAC;
+        el resto abre la ventana de editar (HU-02)."""
+        if not 0 <= fila < len(self._ids_fila):
+            return
+        if columna == INDICE_COLUMNA_CODIGO:
+            item = self.tabla.item(fila, INDICE_COLUMNA_CODIGO)
+            if item is not None:
+                abrir_perfil_siac(item.text())
+            return
+        self.becario_editar_solicitado.emit(self._ids_fila[fila])
 
     def _apply_style(self):
         self.setStyleSheet(f"""
@@ -492,11 +818,41 @@ class PanelControlWindow(QMainWindow):
                 color: {theme.TEXTO_PRINCIPAL};
                 font-size: 18px; font-weight: 800; letter-spacing: 2px;
             }}
-            QLabel#itemActivo {{
+            QPushButton#item {{
+                color: {theme.TEXTO_SECUNDARIO}; font-size: 14px; font-weight: 600;
+                padding: 10px 18px; text-align: left;
+                background: transparent; border: none;
+                border-left: 3px solid transparent;
+            }}
+            QPushButton#item:hover {{ color: {theme.TEXTO_PRINCIPAL}; }}
+            QPushButton#itemActivo {{
                 color: {theme.VERDE_LIMA}; font-size: 14px; font-weight: 700;
-                padding: 10px 18px;
+                padding: 10px 18px; text-align: left;
+                background: transparent; border: none;
                 border-left: 3px solid {theme.VERDE_LIMA};
             }}
+            QPushButton#eliminar {{
+                background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_ERROR_CLARO};
+                font-size: 12px; font-weight: 700;
+                border: 1px solid {theme.TEXTO_ERROR_CLARO}; border-radius: 8px; padding: 6px 12px;
+            }}
+            QPushButton#eliminar:hover {{
+                background-color: {theme.TEXTO_ERROR_CLARO}; color: #ffffff;
+            }}
+            QPushButton#eliminarTodos {{
+                background-color: {theme.TEXTO_ERROR_CLARO}; color: #ffffff;
+                font-size: 14px; font-weight: 800; border: none;
+                border-radius: 8px; padding: 12px 28px;
+            }}
+            QPushButton#eliminarTodos:hover {{
+                background-color: {theme.TEXTO_ERROR}; color: #ffffff;
+            }}
+            QPushButton#reactivar {{
+                background-color: {theme.VERDE_LIMA}; color: #0a1633;
+                font-size: 12px; font-weight: 800; border: none;
+                border-radius: 8px; padding: 6px 12px;
+            }}
+            QPushButton#reactivar:hover {{ background-color: {theme.VERDE_LIMA_HOVER}; }}
             QLabel#sesion {{ color: {theme.TEXTO_SECUNDARIO}; font-size: 11px; }}
             QLabel#tituloSeccion {{ color: {theme.TEXTO_OSCURO}; font-size: 22px; font-weight: 800; }}
             QLabel#lupa {{ color: {theme.TEXTO_GRIS}; font-size: 18px; }}
@@ -504,6 +860,17 @@ class PanelControlWindow(QMainWindow):
                 background-color: {theme.CAMPO_FONDO}; color: {theme.TEXTO_OSCURO};
                 border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px;
                 font-size: 13px;
+            }}
+            QLabel#etiquetaRespaldo {{ color: {theme.TEXTO_GRIS}; font-size: 13px; font-weight: 600; }}
+            QComboBox#comboRespaldo {{
+                background-color: {theme.CAMPO_FONDO}; color: {theme.TEXTO_OSCURO};
+                border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px;
+                font-size: 13px;
+            }}
+            QComboBox#comboRespaldo QAbstractItemView {{
+                background-color: {theme.CAMPO_FONDO}; color: {theme.TEXTO_OSCURO};
+                selection-background-color: #ecfccb; selection-color: {theme.TEXTO_OSCURO};
+                border: 1px solid {theme.BORDE_SUAVE}; outline: 0;
             }}
             QPushButton#nuevo {{
                 background-color: {theme.VERDE_LIMA}; color: #0a1633;

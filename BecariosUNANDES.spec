@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['app/assets/escudo_unandes.ico'],
+    icon=['app/assets/icono-unandes.ico'],
 )

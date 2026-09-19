@@ -192,6 +192,17 @@ def actualizar_estado(becario_id: int, estado: str, db_path: Path = DB_PATH):
         conn.close()
 
 
+def eliminar(becario_id: int, db_path: Path = DB_PATH) -> bool:
+    """Borra el becario. Los seguimientos se borran antes (ver servicio)."""
+    conn = get_connection(db_path)
+    try:
+        cur = conn.execute("DELETE FROM becario WHERE id = ?", (becario_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
 def listar_todos(db_path: Path = DB_PATH) -> list[Becario]:
     conn = get_connection(db_path)
     try:
