@@ -10,7 +10,7 @@ from app.models.becario import Becario
 from app.models.seguimiento_becario import SeguimientoBecario
 from app.persistence import becario_repository, carrera_repository, seguimiento_repository, tipo_beca_repository
 from app.persistence.database import DB_PATH
-from app.services.gestion_service import obtener_gestion_actual
+from app.services.gestion_service import obtener_gestion_actual, obtener_gestion_predeterminada
 
 CAMPOS_REQUERIDOS = ("nombres", "apellidos", "ci", "codigo_estudiante", "carrera", "tipo_beca")
 
@@ -41,9 +41,29 @@ def _clave_gestion(gestion: str) -> tuple[int, int]:
     return int(anio), (1 if mitad == "I" else 2)
 
 
-def gestiones_ingreso_validas() -> list[str]:
-    """De I-2019 a la gestión actual, sin futuras (para el desplegable)."""
-    actual = obtener_gestion_actual()
+def siguiente_gestion(gestion: str) -> str:
+    """La gestión que sigue a la indicada (I-AAAA -> II-AAAA -> I-(AAAA+1))."""
+    mitad, anio = gestion.split("-", 1)
+    if mitad == "I":
+        return f"II-{anio}"
+    return f"I-{int(anio) + 1}"
+
+
+def gestiones_ingreso_nuevo(db_path: Path = DB_PATH) -> list[str]:
+    """Solo actual y siguiente: lo único válido al registrar (sin pasado)."""
+    actual = obtener_gestion_predeterminada(db_path)
+    return [actual, siguiente_gestion(actual)]
+
+
+def gestiones_ingreso_editar(db_path: Path = DB_PATH) -> list[str]:
+    """Completa para editar, de la más reciente a la más antigua."""
+    actual = obtener_gestion_predeterminada(db_path)
+    return [siguiente_gestion(actual)] + list(reversed(gestiones_ingreso_validas(db_path)))
+
+
+def gestiones_ingreso_validas(db_path: Path = DB_PATH) -> list[str]:
+    """De I-2019 a la gestión activa (guardada o calculada), sin futuras."""
+    actual = obtener_gestion_predeterminada(db_path)
     validas = []
     anio = 2019
     while True:
@@ -122,10 +142,10 @@ def normalizar_nombre_propio(texto: str) -> str:
 def _validar_requeridos(datos: dict, db_path: Path = DB_PATH):
     faltantes = [c for c in CAMPOS_REQUERIDOS if not datos[c]]
     if faltantes:
-        # Solo texto visible al usuario: "codigo_estudiante" se muestra como "código".
+        # Solo texto visible al usuario ("codigo_estudiante" -> "código", etc).
         # (Variables, columnas y lógica de validación no cambian.)
-        visibles = ["código" if c == "codigo_estudiante" else c for c in faltantes]
-        raise ValueError(f"Faltan datos obligatorios: {', '.join(visibles)}.")
+        visibles = {"codigo_estudiante": "código", "tipo_beca": "tipo de beca"}
+        raise ValueError(f"Faltan datos obligatorios: {', '.join(visibles.get(c, c) for c in faltantes)}.")
     if datos["nombres"] and not es_nombre_valido(datos["nombres"]):
         raise ValueError("Nombres no válidos: mínimo 2 letras (tildes, ñ, espacios, guion y apóstrofo).")
     if datos["apellidos"] and not es_nombre_valido(datos["apellidos"]):
@@ -136,8 +156,6 @@ def _validar_requeridos(datos: dict, db_path: Path = DB_PATH):
     tipos = [t.nombre for t in tipo_beca_repository.listar_activos(db_path)]
     if datos["tipo_beca"] not in tipos:
         raise ValueError(f"Tipo de beca no válido. Use uno de: {', '.join(tipos)}.")
-    if datos["gestion_ingreso"] and datos["gestion_ingreso"] not in gestiones_ingreso_validas():
-        raise ValueError("Gestión de ingreso no válida. Use una del desplegable.")
 
 
 def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
@@ -149,7 +167,12 @@ def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
     limpio = _normalizar(datos)
     _validar_requeridos(limpio, db_path)
     if not limpio["gestion_ingreso"]:
-        limpio["gestion_ingreso"] = obtener_gestion_actual()
+        limpio["gestion_ingreso"] = obtener_gestion_predeterminada(db_path)
+    permitidas = gestiones_ingreso_nuevo(db_path)
+    if limpio["gestion_ingreso"] not in permitidas:
+        raise ValueError(
+            "Gestión de ingreso no válida para un registro nuevo: "
+            f"use {' o '.join(permitidas)}.")
     if becario_repository.existe_ci(limpio["ci"], db_path=db_path):
         raise BecarioDuplicadoError("ci")
     if becario_repository.existe_codigo(limpio["codigo_estudiante"], db_path=db_path):
@@ -173,6 +196,11 @@ def editar_becario(becario_id: int, datos: dict, db_path: Path = DB_PATH) -> Bec
         raise ValueError("El becario no existe.")
     limpio = _normalizar(datos)
     _validar_requeridos(limpio, db_path)
+    guardada = actual.gestion_ingreso or ""
+    if limpio["gestion_ingreso"] != guardada:
+        permitidas = gestiones_ingreso_editar(db_path) + [""]
+        if limpio["gestion_ingreso"] not in permitidas:
+            raise ValueError("Gestión de ingreso no válida. Use una del desplegable.")
     if becario_repository.existe_ci(limpio["ci"], excluir_id=becario_id, db_path=db_path):
         raise BecarioDuplicadoError("ci")
     if becario_repository.existe_codigo(limpio["codigo_estudiante"], excluir_id=becario_id, db_path=db_path):

@@ -30,6 +30,14 @@ def obtener_gestion_actual(fecha: Optional[datetime] = None) -> str:
 def obtener_gestion_almacenada(db_path: Path = DB_PATH) -> Optional[str]:
     return configuracion_repository.obtener(CLAVE_GESTION, db_path)
 
+
+def obtener_gestion_predeterminada(db_path: Path = DB_PATH) -> str:
+    """Gestión activa guardada (vale tras cambios reales o simulados).
+
+    Si aún no hay ninguna guardada (primer arranque), calcula con la fecha.
+    """
+    return obtener_gestion_almacenada(db_path) or obtener_gestion_actual()
+
 def resetear_periodo(db_path: Path = DB_PATH, gestion_nueva: str | None = None) -> dict:
     """Prepara la nueva gestión en becarios ACTIVOS (Baja/Inactivo no se toca).
 
