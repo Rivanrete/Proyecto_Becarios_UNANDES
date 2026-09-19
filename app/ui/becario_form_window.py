@@ -148,9 +148,18 @@ class BecarioFormWindow(DialogoBase):
         self.txt_contacto.setText(becario.contacto)
 
     def _datos_formulario(self) -> dict:
+        def _capitalizar_persona(valor: str) -> str:
+            texto = (valor or "").strip()
+            if not texto:
+                return ""
+            return " ".join(
+                parte[:1].upper() + parte[1:].lower() if parte else ""
+                for parte in texto.split()
+            )
+
         return {
-            "nombres": self.txt_nombres.text(),
-            "apellidos": self.txt_apellidos.text(),
+            "nombres": _capitalizar_persona(self.txt_nombres.text()),
+            "apellidos": _capitalizar_persona(self.txt_apellidos.text()),
             "ci": self.txt_ci.text(),
             "codigo_estudiante": self.txt_codigo.text(),
             "carrera": self.cmb_carrera.currentData() or self.cmb_carrera.currentText(),

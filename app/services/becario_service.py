@@ -15,6 +15,16 @@ from app.services.gestion_service import obtener_gestion_actual
 CAMPOS_REQUERIDOS = ("nombres", "apellidos", "ci", "codigo_estudiante", "carrera", "tipo_beca")
 
 
+def _capitalizar_persona(valor: str) -> str:
+    texto = (valor or "").strip()
+    if not texto:
+        return ""
+    return " ".join(
+        parte[:1].upper() + parte[1:].lower() if parte else ""
+        for parte in texto.split()
+    )
+
+
 def opciones_carrera(db_path: Path = DB_PATH) -> list[tuple[str, str]]:
     """(sigla, 'Nombre Completo - SIGLA') desde la BD, ordenadas por nombre.
 
@@ -45,6 +55,8 @@ def _normalizar(datos: dict) -> dict:
     limpio = {k: (str(datos.get(k, "") or "").strip()) for k in
               ("nombres", "apellidos", "ci", "codigo_estudiante", "carrera",
                "contacto", "tipo_beca")}
+    limpio["nombres"] = _capitalizar_persona(limpio["nombres"])
+    limpio["apellidos"] = _capitalizar_persona(limpio["apellidos"])
     # Acepta sigla ("SIS") o etiqueta del combo ("Ingeniería de Sistemas - SIS").
     if " - " in limpio["carrera"]:
         limpio["carrera"] = limpio["carrera"].rsplit(" - ", 1)[1]
