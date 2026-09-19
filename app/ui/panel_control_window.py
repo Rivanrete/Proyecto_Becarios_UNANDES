@@ -632,9 +632,18 @@ class PanelControlWindow(QMainWindow):
         self._construir_menu_opciones(etiqueta).exec(QCursor.pos())
 
     def _elegir_opcion(self, etiqueta: QLabel, opcion):
-        """Guarda la opción elegida y refresca (filtros conservados)."""
+        """Guarda la opción elegida y refleja el cambio sin recargar todo.
+
+        Vía rápida: actualiza la celda en su sitio (texto + estilo
+        idénticos) y la caché de filas. Solo el pase a "Baja/Inactivo"
+        toca la página de inactivos (quitar la fila aquí y recargarla
+        allá). Sin cambios de aspecto ni de comportamiento del menú:
+        cerrar sin elegir no dispara esto y conserva el valor anterior.
+        """
         info = self._menu_info.get(etiqueta)
         if info is None:
+            return
+        if opcion == info["valor"]:
             return
         try:
             campo, bid = info["campo"], info["becario_id"]
@@ -651,7 +660,87 @@ class PanelControlWindow(QMainWindow):
         except Exception as e:
             mostrar_notificacion(self, f"No se pudo guardar el cambio: {e}", tipo="error")
             return
-        self.refrescar()
+        self._reflejar_cambio_en_listado(etiqueta, info["campo"], info["becario_id"], opcion, info)
+
+    def _reflejar_cambio_en_listado(self, etiqueta: QLabel, campo: str,
+                                    becario_id: int, nuevo_valor, info: dict):
+        """Actualiza la celda/fila afectada sin reconstruir la tabla."""
+        if campo == "estado":
+            self._reflejar_cambio_estado(etiqueta, becario_id, nuevo_valor)
+            return
+        if info.get("gestion") is None or info.get("gestion") == "—":
+            self.refrescar()  # caso raro sin seguimiento: recarga completa
+            return
+        for fila in self._filas_completas:
+            if fila[0] == becario_id:
+                for seg in (fila[5], fila[7]):
+                    if seg is not None:
+                        setattr(seg, campo, bool(nuevo_valor))
+                break
+        else:
+            self.refrescar()
+            return
+        etiqueta.setText(_texto_opcion(campo, nuevo_valor))
+        etiqueta.setStyleSheet(_estilo_opcion(campo, nuevo_valor))
+        info["valor"] = nuevo_valor
+
+    def _reflejar_cambio_estado(self, etiqueta: QLabel, becario_id: int, nuevo_estado: str):
+        """Refleja el cambio de estado: badge en sitio, o salida a inactivos."""
+        indice_cache = next(
+            (i for i, fila in enumerate(self._filas_completas) if fila[0] == becario_id), None)
+        if indice_cache is None:
+            self.refrescar()
+            return
+        if nuevo_estado == "Baja/Inactivo":
+            self._filas_completas.pop(indice_cache)
+            fila_visible = self._indice_visible_de_becario(becario_id)
+            if fila_visible is not None:
+                self._olvidar_badges_de_fila(fila_visible)
+                self.tabla.removeRow(fila_visible)
+                self._ids_fila.pop(fila_visible)
+                self._renumerar_columna_n()
+                if not self._ids_fila:
+                    self._fila_sin_resultados()
+            self._recargar_inactivos()
+            return
+        fila = self._filas_completas[indice_cache]
+        self._filas_completas[indice_cache] = (
+            fila[0], fila[1], fila[2], fila[3], fila[4], fila[5],
+            fila[6], fila[7], fila[8], nuevo_estado)
+        etiqueta.setText(_texto_opcion("estado", nuevo_estado))
+        etiqueta.setStyleSheet(_estilo_opcion("estado", nuevo_estado))
+        self._menu_info[etiqueta]["valor"] = nuevo_estado
+
+    def _indice_visible_de_becario(self, becario_id: int) -> int | None:
+        """Fila visible del becario en la tabla (None si el filtro la oculta)."""
+        try:
+            return self._ids_fila.index(becario_id)
+        except ValueError:
+            return None
+
+    def _olvidar_badges_de_fila(self, fila_visible: int):
+        """Limpia el registro del menú de los 5 badges de la fila eliminada."""
+        for columna in (7, 8, 9, 10, 11):
+            insignia = self.tabla.cellWidget(fila_visible, columna)
+            if insignia in self._menu_info:
+                del self._menu_info[insignia]
+
+    def _renumerar_columna_n(self):
+        """Reescribe la columna N. (1..n) tras quitar una fila visible."""
+        if len(self._ids_fila) != self.tabla.rowCount():
+            return
+        for numero in range(self.tabla.rowCount()):
+            celda = self.tabla.item(numero, 0)
+            if celda is not None:
+                celda.setText(str(numero + 1))
+
+    def _recargar_inactivos(self):
+        """Actualiza solo la página de inactivos (barato: 1 consulta + filtro)."""
+        self._inactivos_completos = [
+            (b.id, b.apellidos, b.nombres, b.ci, b.codigo_estudiante, b.carrera)
+            for b, _seg in becario_service.listar_inactivos()
+        ]
+        self._filtrar_inactivos(self.txt_busqueda.text())
 
     def _mostrar_menu_filtrar(self):
         """HU-06 (conteo) + funcionalidad adelantada de HU-07 (filtro por categoría).

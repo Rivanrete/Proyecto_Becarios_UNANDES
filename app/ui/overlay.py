@@ -10,7 +10,9 @@ explícito que cubre la ventana principal y se destruye al cerrar el modal.
 """
 from PySide6.QtCore import (
     QEasingCurve,
+    QEvent,
     QEventLoop,
+    QObject,
     QParallelAnimationGroup,
     QPoint,
     QPropertyAnimation,
@@ -28,9 +30,45 @@ def mostrar_overlay(panel: QWidget) -> QWidget:
     overlay = QWidget(panel)
     overlay.setObjectName("overlayModal")
     overlay.setGeometry(panel.rect())
-    overlay.setStyleSheet(OPACIDAD_OVERLAY)
     overlay.show()
     return overlay
+
+
+class _SeguidorVentanaPrincipal(QObject):
+    """Mantiene el velo pegado a la ventana y el diálogo centrado en ella.
+
+    El velo nace con el tamaño que tiene la ventana al crearse (a veces
+    previo al maximizado); sin este seguidor, al maximizar o redimensionar
+    parte de la ventana quedaba sin oscurecer y el diálogo descentrado.
+    Solo observa el Resize: nunca consume el evento (retorna False).
+    """
+
+    def __init__(self, velo: QWidget, ventana: QWidget, dialogo: QDialog | None = None):
+        super().__init__(velo)
+        self._velo = velo
+        self._ventana = ventana
+        self._dialogo = dialogo
+
+    def eventFilter(self, objeto, evento):
+        if objeto is self._ventana and evento.type() == QEvent.Type.Resize:
+            self._velo.setGeometry(self._ventana.rect())
+            if self._dialogo is not None and self._dialogo.isVisible():
+                self._dialogo.move(posicion_centrada(self._dialogo, self._ventana))
+        return False
+
+
+def _pegar_velo_a_ventana(velo: QWidget, ventana: QWidget,
+                          dialogo: QDialog | None = None):
+    """El velo sigue el tamaño de la ventana hasta que se retire."""
+    seguidor = _SeguidorVentanaPrincipal(velo, ventana, dialogo)
+    ventana.installEventFilter(seguidor)
+    return seguidor
+
+
+def _despegar_velo_de_ventana(ventana: QWidget, seguidor: QObject):
+    """Retira el seguidor para no dejar un filtro colgando en la ventana."""
+    ventana.removeEventFilter(seguidor)
+    seguidor.deleteLater()
 
 
 def posicion_centrada(dialogo: QDialog, panel: QWidget) -> QPoint:
@@ -102,6 +140,7 @@ def ejecutar_con_overlay(panel: QWidget, dialogo: QDialog) -> int:
     El overlay se destruye siempre al cerrar, sin residuos ni bloqueo.
     """
     overlay = mostrar_overlay(panel)
+    seguidor = _pegar_velo_a_ventana(overlay, panel, dialogo)
     try:
         pos_final = posicion_centrada(dialogo, panel)
         grupo = _animacion_entrada(overlay, dialogo, pos_final)
@@ -110,6 +149,7 @@ def ejecutar_con_overlay(panel: QWidget, dialogo: QDialog) -> int:
         overlay.mousePressEvent = lambda event: dialogo.reject()
         return dialogo.exec()
     finally:
+        _despegar_velo_de_ventana(panel, seguidor)
         _animacion_salida(overlay)
         overlay.hide()
         overlay.deleteLater()
@@ -152,6 +192,9 @@ def mostrar_sin_bloqueo(panel: QWidget, dialogo: QDialog, lateral: QDialog | Non
     Retorna el overlay (para rastreo de sesión).
     """
     overlay = mostrar_overlay(panel)
+    # El velo sigue a la ventana; los diálogos conservan su posición
+    # (el layout dual tiene la suya propia y no se recentra).
+    seguidor = _pegar_velo_a_ventana(overlay, panel)
     if lateral is None:
         pos_final = posicion_centrada(dialogo, panel)
     else:
@@ -171,6 +214,7 @@ def mostrar_sin_bloqueo(panel: QWidget, dialogo: QDialog, lateral: QDialog | Non
             if lateral is not None:
                 lateral.close()
         finally:
+            _despegar_velo_de_ventana(panel, seguidor)
             _animacion_salida(overlay)
             overlay.hide()
             overlay.deleteLater()

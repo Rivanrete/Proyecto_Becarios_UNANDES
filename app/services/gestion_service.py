@@ -53,13 +53,15 @@ def resetear_periodo(db_path: Path = DB_PATH) -> dict:
     return res
 
 
-def verificar_gestion_activa(db_path: Path = DB_PATH, fecha_referencia=None) -> tuple[Optional[str], str, bool]:
+def verificar_gestion_activa(db_path: Path = DB_PATH, fecha_referencia=None) -> tuple[Optional[str], str, bool, dict | None]:
     """Compara la gestión guardada con la calculada y aplica el cambio si difiere.
 
     Orden: 1) snapshot completo en Respaldos con la gestión que termina,
     2) reset de periodo (parte 2), 3) actualización del valor guardado.
     `fecha_referencia` solo existe para simular transiciones en pruebas.
-    Retorna (anterior, actual, hubo_cambio).
+    Retorna (anterior, actual, hubo_cambio, detalle). `detalle` trae los
+    números reales de lo que se hizo (respaldados, reiniciados,
+    sin_modificar) o None si no se aplicó ningún cambio.
 
     TODO: conectar aquí el backup/cierre de gestión (punto 7 de la lista)
     cuando ese proceso exista.
@@ -68,12 +70,20 @@ def verificar_gestion_activa(db_path: Path = DB_PATH, fecha_referencia=None) -> 
     guardada = configuracion_repository.obtener(CLAVE_GESTION, db_path)
     if guardada != actual:
         if guardada:
-            respaldo_repository.guardar_respaldo(
-                guardada, seguimiento_repository.listar_para_panel(db_path), db_path)
-            resetear_periodo(db_path)
+            filas = seguimiento_repository.listar_para_panel(db_path)
+            respaldados = respaldo_repository.guardar_respaldo(
+                guardada, filas, db_path)
+            reiniciados = resetear_periodo(db_path)["becarios"]
+            detalle = {
+                "respaldados": respaldados,
+                "reiniciados": reiniciados,
+                "sin_modificar": len(filas) - reiniciados,
+            }
+            configuracion_repository.guardar(CLAVE_GESTION, actual, db_path)
+            return guardada, actual, True, detalle
         configuracion_repository.guardar(CLAVE_GESTION, actual, db_path)
-        return guardada, actual, True
-    return guardada, actual, False
+        return guardada, actual, True, None
+    return guardada, actual, False, None
 
 
 def gestiones_respaldadas(db_path: Path = DB_PATH) -> list[str]:
