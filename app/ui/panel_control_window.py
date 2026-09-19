@@ -53,8 +53,8 @@ COLUMNAS = [
     "Gestión",
     "Horas Becarias",
     "Materias en Orden",
-    "Carpeta Cancelada",
-    "Carta Renovación",
+    "C. C.",
+    "C. de R.",
     "Estado",
 ]
 
@@ -114,7 +114,7 @@ COLUMNAS_INACTIVOS = ["N.", "Apellidos", "Nombres", "CI", "Código", "Carrera", 
 
 COLUMNAS_RESPALDO = ["N.", "Carrera", "Apellidos", "Nombres", "Código",
                      "% Anterior", "Gestión", "Horas Becarias", "Materias en Orden",
-                     "Carpeta Cancelada", "Carta Renovación",
+                     "C. C.", "C. de R.",
                      "Estado"]
 
 
@@ -213,14 +213,24 @@ class PanelControlWindow(QMainWindow):
         self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabla.verticalHeader().setVisible(False)
-        # Reparto híbrido: columnas de contenido a su medida y las dos
-        # de encabezado largo (9 y 10) en Stretch para absorber el sobrante.
-        # Así no hay franja vacía ni encabezados cortados.
+        # Reparto híbrido: contenido a medida y columnas breves con ancho fijo
+        # para que los nombres abreviados no se corten ni tapen el texto.
         cabecera = self.tabla.horizontalHeader()
         for i in COLUMNAS_CONTENIDO:
             cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         for i in COLUMNAS_ESTIRADAS:
-            cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch)
+            cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.Fixed)
+            self.tabla.setColumnWidth(i, 95 if i == 9 else 100)
+        self.tabla.setColumnWidth(0, 42)
+        self.tabla.setColumnWidth(1, 120)
+        self.tabla.setColumnWidth(2, 150)
+        self.tabla.setColumnWidth(3, 150)
+        self.tabla.setColumnWidth(4, 95)
+        self.tabla.setColumnWidth(5, 90)
+        self.tabla.setColumnWidth(6, 100)
+        self.tabla.setColumnWidth(7, 120)
+        self.tabla.setColumnWidth(8, 155)
+        self.tabla.setColumnWidth(11, 110)
         # Doble clic abre el becario en modo edición (HU-02, CA-1).
         self.tabla.cellDoubleClicked.connect(self._abrir_editar)
         layout_contenido.addWidget(self.tabla, 1)
@@ -329,6 +339,10 @@ class PanelControlWindow(QMainWindow):
             cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         for i in (len(COLUMNAS_RESPALDO) - 2, len(COLUMNAS_RESPALDO) - 1):
             cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch)
+        self.tabla_respaldos.setColumnWidth(9, 90)
+        self.tabla_respaldos.setColumnWidth(10, 100)
+        self.tabla_respaldos.setColumnWidth(2, 150)
+        self.tabla_respaldos.setColumnWidth(3, 150)
         layout.addWidget(self.tabla_respaldos, 1)
         return pagina
 
