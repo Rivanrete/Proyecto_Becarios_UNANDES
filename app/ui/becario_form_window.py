@@ -39,17 +39,24 @@ class BecarioFormWindow(DialogoBase):
         # El cierre es X / Cancelar / Esc / clic fuera (overlay).
         super().__init__(parent, modal=False)
         self.becario_id = becario_id
+        self._modo_edicion = becario_id is None
+        self._snapshot_original: dict = {}
+        self._controles_editables = []
         # main.py lee este mensaje tras accept() y lo muestra con la
         # notificación propia del sistema (sin QMessageBox nativo).
         self.mensaje_exito: str | None = None
         self.setWindowTitle(
-            "Editar Becario" if becario_id is not None else "Nuevo Becario"
+            "Ficha del Becario" if becario_id is not None else "Nuevo Becario"
         )
         self.setMinimumSize(800, 760)
         self._build_ui()
         self._apply_style()
         if becario_id is not None:
             self._precargar()
+            self._guardar_snapshot()
+            self._actualizar_estado_formulario()
+        else:
+            self._actualizar_estado_formulario()
 
     def _build_ui(self):
         root = QVBoxLayout(self)
@@ -74,10 +81,12 @@ class BecarioFormWindow(DialogoBase):
         encabezado.addWidget(self.btn_cerrar)
         layout.addLayout(encabezado)
 
-        titulo = QLabel("Editar Becario" if self.becario_id is not None else "Nuevo Becario", card)
-        titulo.setObjectName("titulo")
-        titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(titulo)
+        self.lbl_titulo = QLabel(
+            "Ficha del Becario" if self.becario_id is not None else "Nuevo Becario", card
+        )
+        self.lbl_titulo.setObjectName("titulo")
+        self.lbl_titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.lbl_titulo)
 
         form = QFormLayout()
         form.setSpacing(10)
@@ -112,6 +121,17 @@ class BecarioFormWindow(DialogoBase):
         self.txt_contacto = QLineEdit(card)
         self.txt_contacto.setValidator(validador_digitos)
         self.txt_contacto.setPlaceholderText("Celular, solo números (opcional)")
+        for control in (
+            self.txt_nombres,
+            self.txt_apellidos,
+            self.txt_ci,
+            self.txt_codigo,
+            self.cmb_carrera,
+            self.cmb_tipo,
+            self.cmb_ingreso,
+            self.txt_contacto,
+        ):
+            self._controles_editables.append(control)
         form.addRow("Nombres:", self.txt_nombres)
         form.addRow("Apellidos:", self.txt_apellidos)
         form.addRow("CI:", self.txt_ci)
@@ -129,15 +149,20 @@ class BecarioFormWindow(DialogoBase):
         self.lbl_error.setVisible(False)
         layout.addWidget(self.lbl_error)
 
-        fila_botones = QVBoxLayout()
+        fila_botones = QHBoxLayout()
         fila_botones.setSpacing(8)
+        self.btn_editar = QPushButton("Editar Datos", card)
+        self.btn_editar.setObjectName("editar")
+        self.btn_editar.clicked.connect(self._on_editar)
         self.btn_guardar = QPushButton("Guardar", card)
         self.btn_guardar.setObjectName("guardar")
         self.btn_guardar.setDefault(True)
         self.btn_guardar.clicked.connect(self._on_guardar)
         self.btn_cancelar = QPushButton("Cancelar", card)
         self.btn_cancelar.setObjectName("cancelar")
-        self.btn_cancelar.clicked.connect(self.reject)
+        self.btn_cancelar.clicked.connect(self._on_cancelar)
+        fila_botones.addStretch(1)
+        fila_botones.addWidget(self.btn_editar)
         fila_botones.addWidget(self.btn_guardar)
         fila_botones.addWidget(self.btn_cancelar)
         layout.addLayout(fila_botones)
@@ -162,6 +187,74 @@ class BecarioFormWindow(DialogoBase):
         if indice_ingreso >= 0:
             self.cmb_ingreso.setCurrentIndex(indice_ingreso)
         self.txt_contacto.setText(becario.contacto)
+
+    def _guardar_snapshot(self):
+        if self.becario_id is None:
+            return
+        self._snapshot_original = {
+            "nombres": self.txt_nombres.text(),
+            "apellidos": self.txt_apellidos.text(),
+            "ci": self.txt_ci.text(),
+            "codigo_estudiante": self.txt_codigo.text(),
+            "carrera": self.cmb_carrera.currentData() or self.cmb_carrera.currentText(),
+            "tipo_beca": self.cmb_tipo.currentText(),
+            "gestion_ingreso": self.cmb_ingreso.currentData() or "",
+            "contacto": self.txt_contacto.text(),
+        }
+
+    def _restaurar_snapshot(self):
+        if self.becario_id is None:
+            return
+        self.txt_nombres.setText(self._snapshot_original.get("nombres", ""))
+        self.txt_apellidos.setText(self._snapshot_original.get("apellidos", ""))
+        self.txt_ci.setText(self._snapshot_original.get("ci", ""))
+        self.txt_codigo.setText(self._snapshot_original.get("codigo_estudiante", ""))
+        carrera = self._snapshot_original.get("carrera", "")
+        indice = self.cmb_carrera.findData(carrera)
+        if indice >= 0:
+            self.cmb_carrera.setCurrentIndex(indice)
+        tipo = self._snapshot_original.get("tipo_beca", "")
+        indice_tipo = self.cmb_tipo.findText(tipo)
+        if indice_tipo >= 0:
+            self.cmb_tipo.setCurrentIndex(indice_tipo)
+        ingreso = self._snapshot_original.get("gestion_ingreso", "")
+        indice_ingreso = self.cmb_ingreso.findData(ingreso)
+        if indice_ingreso >= 0:
+            self.cmb_ingreso.setCurrentIndex(indice_ingreso)
+        self.txt_contacto.setText(self._snapshot_original.get("contacto", ""))
+
+    def _actualizar_estado_formulario(self):
+        editable = self._modo_edicion
+        if self.becario_id is not None:
+            self.lbl_titulo.setText("Editar Becario" if editable else "Ficha del Becario")
+            self.setWindowTitle("Editar Becario" if editable else "Ficha del Becario")
+            self.btn_editar.setVisible(not editable)
+            self.btn_guardar.setVisible(editable)
+            self.btn_cancelar.setVisible(editable)
+        else:
+            self.lbl_titulo.setText("Nuevo Becario")
+            self.setWindowTitle("Nuevo Becario")
+            self.btn_editar.setVisible(False)
+            self.btn_guardar.setVisible(True)
+            self.btn_cancelar.setVisible(True)
+        for control in self._controles_editables:
+            if isinstance(control, QLineEdit):
+                control.setReadOnly(not editable)
+            else:
+                control.setEnabled(editable)
+
+    def _on_editar(self):
+        self._guardar_snapshot()
+        self._modo_edicion = True
+        self._actualizar_estado_formulario()
+
+    def _on_cancelar(self):
+        if self.becario_id is not None:
+            self._restaurar_snapshot()
+            self._modo_edicion = False
+            self._actualizar_estado_formulario()
+            return
+        self.reject()
 
     def _aplicar_mayuscula_inicial(self, campo: QLineEdit):
         """Normaliza el campo al salir de él (se ve el resultado de inmediato)."""
@@ -248,6 +341,11 @@ class BecarioFormWindow(DialogoBase):
             QPushButton#guardar:hover {{ background-color: {theme.VERDE_LIMA_HOVER}; }}
             QPushButton#cancelar {{
                 background-color: transparent; color: {theme.TEXTO_PRINCIPAL};
+                font-size: 13px; font-weight: 700;
+                border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px; padding: 10px;
+            }}
+            QPushButton#editar {{
+                background-color: {theme.AZUL_BORDE}; color: {theme.TEXTO_PRINCIPAL};
                 font-size: 13px; font-weight: 700;
                 border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px; padding: 10px;
             }}

@@ -66,6 +66,9 @@ PESOS_COLUMNAS = (5, 7, 13, 12, 8, 8, 7, 8, 8, 8, 8, 8)
 # Abreviaturas fijas (antes que "…") para los dos badges largos.
 _ABREVIATURAS_FIJAS = {"No cumplió": "No cump.", "En renovación": "En renov."}
 
+# Variante corta de encabezado (de beymar) cuando la columna queda angosta.
+_ABREVIATURAS_ENCABEZADO = {9: "C. C.", 10: "C. de R."}
+
 # Margen que se reserva al abreviar badges (acolchado del estilo + aire).
 MARGEN_BADGE_PX = 26
 
@@ -678,8 +681,22 @@ class PanelControlWindow(QMainWindow):
             return False
         for i, peso in enumerate(PESOS_COLUMNAS):
             self.tabla.setColumnWidth(i, max(30, base * peso // 100))
+        self._ajustar_encabezados_al_ancho()
         self._reabreviar_badges()
         return True
+
+    def _ajustar_encabezados_al_ancho(self):
+        """Título completo en dos líneas; corto ("C. C.") solo si no cabe."""
+        fuente = QFontMetrics(self.tabla.horizontalHeader().font())
+        for columna, corto in _ABREVIATURAS_ENCABEZADO.items():
+            largo = COLUMNAS[columna]
+            linea_mayor = max(largo.split("\n"), key=len)
+            if fuente.horizontalAdvance(linea_mayor) + 12 <= self.tabla.columnWidth(columna):
+                texto = largo
+            else:
+                texto = corto
+            if (item := self.tabla.horizontalHeaderItem(columna)) is not None:
+                item.setText(texto)
 
     def eventFilter(self, obj, event):
         if obj is self.tabla and event.type() == QEvent.Type.Resize:
