@@ -301,12 +301,12 @@ class DialogoFechaLimite(DialogoBase):
             }}
             QToolButton#cerrar:hover {{ color: {theme.TEXTO_ERROR}; }}
             QLineEdit {{
-                background-color: {theme.AZUL_CAMPO}; color: {theme.TEXTO_PRINCIPAL};
+                background-color: {theme.AZUL_FONDO}; color: {theme.TEXTO_PRINCIPAL};
                 border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px; padding: 9px 10px;
                 font-size: 13px;
             }}
             QPushButton#elegirFecha {{
-                background-color: {theme.AZUL_CAMPO}; color: {theme.TEXTO_PRINCIPAL};
+                background-color: {theme.AZUL_FONDO}; color: {theme.TEXTO_PRINCIPAL};
                 border: 1px solid {theme.AZUL_BORDE};
                 border-radius: 8px; padding: 7px 10px;
             }}
