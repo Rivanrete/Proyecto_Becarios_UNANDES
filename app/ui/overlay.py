@@ -30,6 +30,7 @@ def mostrar_overlay(panel: QWidget) -> QWidget:
     overlay = QWidget(panel)
     overlay.setObjectName("overlayModal")
     overlay.setGeometry(panel.rect())
+    overlay.setStyleSheet(OPACIDAD_OVERLAY)
     overlay.show()
     return overlay
 

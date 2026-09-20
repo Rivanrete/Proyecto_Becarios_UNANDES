@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from app.models.seguimiento_becario import SeguimientoBecario
 from app.persistence import configuracion_repository, respaldo_repository, seguimiento_repository
 from app.persistence import becario_repository
 from app.persistence.database import DB_PATH
@@ -29,27 +30,52 @@ def obtener_gestion_actual(fecha: Optional[datetime] = None) -> str:
 def obtener_gestion_almacenada(db_path: Path = DB_PATH) -> Optional[str]:
     return configuracion_repository.obtener(CLAVE_GESTION, db_path)
 
-def resetear_periodo(db_path: Path = DB_PATH) -> dict:
+
+def obtener_gestion_predeterminada(db_path: Path = DB_PATH) -> str:
+    """Gestión activa guardada (vale tras cambios reales o simulados).
+
+    Si aún no hay ninguna guardada (primer arranque), calcula con la fecha.
+    """
+    return obtener_gestion_almacenada(db_path) or obtener_gestion_actual()
+
+def resetear_periodo(db_path: Path = DB_PATH, gestion_nueva: str | None = None) -> dict:
     """Prepara la nueva gestión en becarios ACTIVOS (Baja/Inactivo no se toca).
 
+    La fila de la gestión que termina se conserva intacta; se crea una
+    fila NUEVA para la gestión indicada con los valores reiniciados:
     - horas_becarias, carpeta_cancelada, carta_renovacion -> False (0/No).
-    - materias_en_orden NO se toca (conserva su valor).
+    - materias_en_orden y porcentajes se heredan de la fila anterior.
     - estado -> "En renovación".
     - Nombres, CI, carrera y demás campos no se tocan.
+    Si la fila nueva ya existe (reintento), se reinicia sobre ella.
     Retorna {"becarios": n, "seguimientos": m} afectados.
     """
+    nueva = (gestion_nueva or "").strip() or obtener_gestion_actual()
     res = {"becarios": 0, "seguimientos": 0}
     for becario in becario_repository.listar_todos(db_path):
         if becario.estado == "Baja/Inactivo":
             continue
         becario_repository.actualizar_estado(becario.id, "En renovación", db_path)
         res["becarios"] += 1
-        for seg in seguimiento_repository.listar_por_becario(becario.id, db_path):
-            seg.horas_becarias = False
-            seg.carpeta_cancelada = False
-            seg.carta_renovacion = False
-            seguimiento_repository.actualizar(seg, db_path)
-            res["seguimientos"] += 1
+        anteriores = seguimiento_repository.listar_por_becario(becario.id, db_path)
+        existente = next((s for s in anteriores if s.gestion == nueva), None)
+        if existente is not None:
+            existente.horas_becarias = False
+            existente.carpeta_cancelada = False
+            existente.carta_renovacion = False
+            seguimiento_repository.actualizar(existente, db_path)
+        elif anteriores:
+            base = anteriores[-1]
+            seguimiento_repository.crear_seguimiento(SeguimientoBecario(
+                id=None, becario_id=becario.id, gestion=nueva,
+                porcentaje_anterior=base.porcentaje_anterior,
+                porcentaje_gestion=base.porcentaje_gestion,
+                horas_becarias=False, materias_en_orden=base.materias_en_orden,
+                carpeta_cancelada=False, carta_renovacion=False), db_path)
+        else:
+            seguimiento_repository.crear_seguimiento(SeguimientoBecario(
+                id=None, becario_id=becario.id, gestion=nueva), db_path)
+        res["seguimientos"] += 1
     return res
 
 
@@ -73,7 +99,7 @@ def verificar_gestion_activa(db_path: Path = DB_PATH, fecha_referencia=None) -> 
             filas = seguimiento_repository.listar_para_panel(db_path)
             respaldados = respaldo_repository.guardar_respaldo(
                 guardada, filas, db_path)
-            reiniciados = resetear_periodo(db_path)["becarios"]
+            reiniciados = resetear_periodo(db_path, actual)["becarios"]
             detalle = {
                 "respaldados": respaldados,
                 "reiniciados": reiniciados,

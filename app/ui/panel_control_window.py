@@ -15,8 +15,8 @@ en código, nombres y apellidos, sin importar mayúsculas ni tildes.
 import unicodedata
 import webbrowser
 
-from PySide6.QtCore import Qt, QEvent, Signal
-from PySide6.QtGui import QColor, QCursor, QFont
+from PySide6.QtCore import Qt, QEvent, QTimer, Signal
+from PySide6.QtGui import QColor, QCursor, QFont, QFontMetrics
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -49,7 +49,7 @@ COLUMNAS = [
     "Apellidos",
     "Nombres",
     "Código",
-    "% Anterior",
+    "%\nAnterior",
     "Gestión",
     "Horas Becarias",
     "Materias en Orden",
@@ -58,9 +58,19 @@ COLUMNAS = [
     "Estado",
 ]
 
-# Índices fijos: 9 y 10 son los encabezados largos que absorben el sobrante.
-COLUMNAS_CONTENIDO = (0, 1, 2, 3, 4, 5, 6, 7, 8, 11)
-COLUMNAS_ESTIRADAS = (9, 10)
+# Pesos proporcionales de columna (suman 100): se aplican sobre el ancho
+# visible para que la tabla quepa sin scroll en pantallas chicas.
+# Horas (7) y Estado (11) reservan lo medido para "No cumplió"/"En renovación".
+PESOS_COLUMNAS = (5, 7, 13, 12, 8, 8, 7, 8, 8, 8, 8, 8)
+
+# Abreviaturas fijas (antes que "…") para los dos badges largos.
+_ABREVIATURAS_FIJAS = {"No cumplió": "No cump.", "En renovación": "En renov."}
+
+# Variante corta de encabezado (de beymar) cuando la columna queda angosta.
+_ABREVIATURAS_ENCABEZADO = {9: "C. C.", 10: "C. de R."}
+
+# Margen que se reserva al abreviar badges (acolchado del estilo + aire).
+MARGEN_BADGE_PX = 26
 
 ESTILO_BADGE_NEUTRO = (
     "background-color: #fef3c7; color: #92400e; "
@@ -158,9 +168,31 @@ class PanelControlWindow(QMainWindow):
         self._menu_info: dict = {}
         self._categoria_filtro: str | None = None
         self._botones_sidebar: list = []
+        self._anchos_proporcionales_listos = False
+        self._reajuste_columnas_pendiente = False
         self._build_ui()
         self._apply_style()
         self.refrescar()
+
+    def showEvent(self, event):
+        """Programa el cálculo con la ventana ya en su tamaño final."""
+        super().showEvent(event)
+        self._programar_reajuste_columnas()
+
+    def _programar_reajuste_columnas(self):
+        """Calcula anchos tras el layout (coalesca redimensionados seguidos)."""
+        if self._reajuste_columnas_pendiente:
+            return
+        self._reajuste_columnas_pendiente = True
+        QTimer.singleShot(0, self._reajustar_columnas_diferido)
+
+    def _reajustar_columnas_diferido(self):
+        self._reajuste_columnas_pendiente = False
+        try:
+            if self._aplicar_anchos_proporcionales():
+                self._anchos_proporcionales_listos = True
+        except RuntimeError:
+            pass  # ventana cerrada antes del ciclo de eventos
 
     # -- layout -----------------------------------------------------------
     def _build_ui(self):
@@ -212,25 +244,16 @@ class PanelControlWindow(QMainWindow):
         self.tabla.setHorizontalHeaderLabels(COLUMNAS)
         self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        # Sin foco: ninguna fila se ve distinta hasta que el usuario la seleccione.
+        self.tabla.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.tabla.verticalHeader().setVisible(False)
-        # Reparto híbrido: contenido a medida y columnas breves con ancho fijo
-        # para que los nombres abreviados no se corten ni tapen el texto.
+        # Anchos proporcionales al viewport (Interactive): caben sin scroll
+        # en pantallas chicas y el texto que sobra se abrevia con "…".
+        self.tabla.setTextElideMode(Qt.TextElideMode.ElideRight)
         cabecera = self.tabla.horizontalHeader()
-        for i in COLUMNAS_CONTENIDO:
-            cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        for i in COLUMNAS_ESTIRADAS:
-            cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.Fixed)
-            self.tabla.setColumnWidth(i, 95 if i == 9 else 100)
-        self.tabla.setColumnWidth(0, 42)
-        self.tabla.setColumnWidth(1, 120)
-        self.tabla.setColumnWidth(2, 150)
-        self.tabla.setColumnWidth(3, 150)
-        self.tabla.setColumnWidth(4, 95)
-        self.tabla.setColumnWidth(5, 90)
-        self.tabla.setColumnWidth(6, 100)
-        self.tabla.setColumnWidth(7, 120)
-        self.tabla.setColumnWidth(8, 155)
-        self.tabla.setColumnWidth(11, 110)
+        for i in range(len(COLUMNAS)):
+            cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+        self.tabla.installEventFilter(self)
         # Doble clic abre el becario en modo edición (HU-02, CA-1).
         self.tabla.cellDoubleClicked.connect(self._abrir_editar)
         layout_contenido.addWidget(self.tabla, 1)
@@ -329,6 +352,10 @@ class PanelControlWindow(QMainWindow):
         fila_gestion.addWidget(self.cmb_respaldo, 1)
         layout.addLayout(fila_gestion)
 
+        self.lbl_titulo_respaldo = QLabel("Respaldo", pagina)
+        self.lbl_titulo_respaldo.setObjectName("tituloRespaldo")
+        layout.addWidget(self.lbl_titulo_respaldo)
+
         self.tabla_respaldos = QTableWidget(0, len(COLUMNAS_RESPALDO))
         self.tabla_respaldos.setHorizontalHeaderLabels(COLUMNAS_RESPALDO)
         self.tabla_respaldos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -349,6 +376,8 @@ class PanelControlWindow(QMainWindow):
     def _cargar_respaldo(self, gestion: str):
         """Puebla la tabla con el snapshot (celdas de texto y badges fijos)."""
         self.tabla_respaldos.setRowCount(0)
+        self.lbl_titulo_respaldo.setText(
+            f"Respaldo de {gestion}" if gestion else "Respaldo")
         if not gestion:
             return
         for i, r in enumerate(gestion_service.leer_respaldo(gestion), start=1):
@@ -356,7 +385,7 @@ class PanelControlWindow(QMainWindow):
             self.tabla_respaldos.insertRow(fila)
             for columna, valor in enumerate(
                     [str(i), r.carrera, r.apellidos, r.nombres, r.codigo_estudiante,
-                     r.porcentaje_anterior, r.gestion_respaldada]):
+                      r.porcentaje_anterior, r.gestion_ingreso or "—"]):
                 item = QTableWidgetItem(valor)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.tabla_respaldos.setItem(fila, columna, item)
@@ -570,6 +599,10 @@ class PanelControlWindow(QMainWindow):
                                      seg.carta_renovacion,
                                      real.gestion if real is not None else None)
             self._celda_badge_menu(fila, 11, becario_id, "estado", estado, None)
+        if not self._anchos_proporcionales_listos and self.isVisible():
+            if self._aplicar_anchos_proporcionales():
+                self._anchos_proporcionales_listos = True
+        self._reabreviar_badges()
         if self.tabla.rowCount() == 0:
             self._fila_sin_resultados()
 
@@ -605,19 +638,75 @@ class PanelControlWindow(QMainWindow):
     def _celda_badge_menu(self, fila: int, columna: int, becario_id: int,
                             campo: str, valor_actual, gestion: str | None):
         """Badge clickeable: mano, tooltip y desplegable con opciones válidas."""
-        etiqueta = QLabel(_texto_opcion(campo, valor_actual))
+        etiqueta = QLabel()
         etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        etiqueta.setStyleSheet(_estilo_opcion(campo, valor_actual))
         etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
-        etiqueta.setToolTip("Clic para cambiar")
         etiqueta.installEventFilter(self)
         self._menu_info[etiqueta] = {
             "becario_id": becario_id, "campo": campo,
             "valor": valor_actual, "gestion": gestion,
+            "columna": columna, "completo": "",
         }
+        self._pintar_badge(etiqueta, campo, valor_actual)
         self.tabla.setCellWidget(fila, columna, etiqueta)
 
+    def _texto_visible_badge(self, columna: int, completo: str, fuente) -> str:
+        """Completo si cabe; si no, abreviatura fija; "…" solo al final."""
+        disponible = max(20, self.tabla.columnWidth(columna) - MARGEN_BADGE_PX)
+        metricas = QFontMetrics(fuente)
+        if metricas.horizontalAdvance(completo) <= disponible:
+            return completo
+        fija = _ABREVIATURAS_FIJAS.get(completo)
+        if fija is not None and metricas.horizontalAdvance(fija) <= disponible:
+            return fija
+        return metricas.elidedText(completo, Qt.TextElideMode.ElideRight, disponible)
+
+    def _pintar_badge(self, etiqueta: QLabel, campo: str, valor):
+        """Texto (abreviado si no cabe) + estilo + tooltip con valor completo."""
+        info = self._menu_info.get(etiqueta, {})
+        completo = _texto_opcion(campo, valor)
+        info["valor"] = valor
+        info["completo"] = completo
+        etiqueta.setText(self._texto_visible_badge(
+            info.get("columna", 0), completo, etiqueta.font()))
+        etiqueta.setStyleSheet(_estilo_opcion(campo, valor))
+        etiqueta.setToolTip(f"{completo} — Clic para cambiar")
+
+    def _reabreviar_badges(self):
+        """Re-abrevia los badges al ancho actual (tras poblar o redimensionar)."""
+        for etiqueta, info in self._menu_info.items():
+            etiqueta.setText(self._texto_visible_badge(
+                info.get("columna", 0), info.get("completo", ""), etiqueta.font()))
+
+    def _aplicar_anchos_proporcionales(self) -> bool:
+        """Reparte el ancho visible según PESOS_COLUMNAS (sin scroll)."""
+        base = max(0, self.tabla.viewport().width())
+        if base <= 0:
+            return False
+        for i, peso in enumerate(PESOS_COLUMNAS):
+            self.tabla.setColumnWidth(i, max(30, base * peso // 100))
+        self._ajustar_encabezados_al_ancho()
+        self._reabreviar_badges()
+        return True
+
+    def _ajustar_encabezados_al_ancho(self):
+        """Título completo en dos líneas; corto ("C. C.") solo si no cabe."""
+        fuente = QFontMetrics(self.tabla.horizontalHeader().font())
+        for columna, corto in _ABREVIATURAS_ENCABEZADO.items():
+            largo = COLUMNAS[columna]
+            linea_mayor = max(largo.split("\n"), key=len)
+            if fuente.horizontalAdvance(linea_mayor) + 12 <= self.tabla.columnWidth(columna):
+                texto = largo
+            else:
+                texto = corto
+            if (item := self.tabla.horizontalHeaderItem(columna)) is not None:
+                item.setText(texto)
+
     def eventFilter(self, obj, event):
+        if obj is self.tabla and event.type() == QEvent.Type.Resize:
+            # Diferido: aquí el viewport aún tiene el tamaño anterior.
+            self._programar_reajuste_columnas()
+            return False
         if (event.type() == QEvent.Type.MouseButtonRelease
                 and event.button() == Qt.MouseButton.LeftButton
                 and obj in self._menu_info):
@@ -685,18 +774,36 @@ class PanelControlWindow(QMainWindow):
         if info.get("gestion") is None or info.get("gestion") == "—":
             self.refrescar()  # caso raro sin seguimiento: recarga completa
             return
+        if self._actualizar_cache_campo(becario_id, campo, nuevo_valor):
+            self._pintar_badge(etiqueta, campo, nuevo_valor)
+        else:
+            self.refrescar()
+
+    def _actualizar_cache_campo(self, becario_id: int, campo: str, nuevo_valor) -> bool:
+        """Actualiza el seguimiento en caché. False si el becario no está."""
         for fila in self._filas_completas:
             if fila[0] == becario_id:
                 for seg in (fila[5], fila[7]):
                     if seg is not None:
                         setattr(seg, campo, bool(nuevo_valor))
-                break
-        else:
-            self.refrescar()
+                return True
+        return False
+
+    def reflejar_cambio_externo(self, becario_id: int, campo: str, nuevo_valor: bool):
+        """Refleja un cambio guardado desde la ficha (misma vía rápida, sin recargar).
+
+        Solo los 4 campos de seguimiento llegan aquí (la ficha no edita
+        estado); inactivos y respaldos no dependen de ellos.
+        """
+        if campo not in ("horas_becarias", "materias_en_orden",
+                         "carpeta_cancelada", "carta_renovacion"):
             return
-        etiqueta.setText(_texto_opcion(campo, nuevo_valor))
-        etiqueta.setStyleSheet(_estilo_opcion(campo, nuevo_valor))
-        info["valor"] = nuevo_valor
+        if not self._actualizar_cache_campo(becario_id, campo, nuevo_valor):
+            return
+        for etiqueta, info in self._menu_info.items():
+            if info.get("becario_id") == becario_id and info.get("campo") == campo:
+                self._pintar_badge(etiqueta, campo, bool(nuevo_valor))
+                break
 
     def _reflejar_cambio_estado(self, etiqueta: QLabel, becario_id: int, nuevo_estado: str):
         """Refleja el cambio de estado: badge en sitio, o salida a inactivos."""
@@ -721,9 +828,7 @@ class PanelControlWindow(QMainWindow):
         self._filas_completas[indice_cache] = (
             fila[0], fila[1], fila[2], fila[3], fila[4], fila[5],
             fila[6], fila[7], fila[8], nuevo_estado)
-        etiqueta.setText(_texto_opcion("estado", nuevo_estado))
-        etiqueta.setStyleSheet(_estilo_opcion("estado", nuevo_estado))
-        self._menu_info[etiqueta]["valor"] = nuevo_estado
+        self._pintar_badge(etiqueta, "estado", nuevo_estado)
 
     def _indice_visible_de_becario(self, becario_id: int) -> int | None:
         """Fila visible del becario en la tabla (None si el filtro la oculta)."""
@@ -876,6 +981,7 @@ class PanelControlWindow(QMainWindow):
                 font-size: 13px;
             }}
             QLabel#etiquetaRespaldo {{ color: {theme.TEXTO_GRIS}; font-size: 13px; font-weight: 600; }}
+            QLabel#tituloRespaldo {{ color: {theme.TEXTO_OSCURO}; font-size: 16px; font-weight: 800; }}
             QComboBox#comboRespaldo {{
                 background-color: {theme.CAMPO_FONDO}; color: {theme.TEXTO_OSCURO};
                 border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px;

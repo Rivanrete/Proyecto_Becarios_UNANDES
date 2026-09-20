@@ -9,7 +9,7 @@ from typing import Optional
 from app.models.becario import Becario
 from app.persistence.database import DB_PATH, get_connection
 
-_COLUMNAS = "id, nombres, apellidos, ci, codigo_estudiante, carrera, contacto, tipo_beca, estado"
+_COLUMNAS = "id, nombres, apellidos, ci, codigo_estudiante, carrera, contacto, tipo_beca, estado, gestion_ingreso"
 
 
 def _mapear(fila) -> Becario:
@@ -23,6 +23,7 @@ def _mapear(fila) -> Becario:
         contacto=fila["contacto"],
         tipo_beca=fila["tipo_beca"],
         estado=fila["estado"],
+        gestion_ingreso=fila["gestion_ingreso"] if "gestion_ingreso" in fila.keys() else "",
     )
 
 
@@ -30,11 +31,11 @@ def insertar_becario(becario: Becario, db_path: Path = DB_PATH) -> Becario:
     conn = get_connection(db_path)
     try:
         cur = conn.execute(
-            "INSERT INTO becario (nombres, apellidos, ci, codigo_estudiante, carrera, contacto, tipo_beca, estado)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO becario (nombres, apellidos, ci, codigo_estudiante, carrera, contacto, tipo_beca, estado, gestion_ingreso)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (becario.nombres, becario.apellidos, becario.ci,
              becario.codigo_estudiante, becario.carrera, becario.contacto,
-             becario.tipo_beca, becario.estado),
+             becario.tipo_beca, becario.estado, becario.gestion_ingreso),
         )
         conn.commit()
         becario.id = cur.lastrowid
@@ -48,10 +49,10 @@ def actualizar_becario(becario: Becario, db_path: Path = DB_PATH) -> Becario:
     try:
         conn.execute(
             "UPDATE becario SET nombres = ?, apellidos = ?, ci = ?,"
-            " codigo_estudiante = ?, carrera = ?, contacto = ?, tipo_beca = ?, estado = ? WHERE id = ?",
+            " codigo_estudiante = ?, carrera = ?, contacto = ?, tipo_beca = ?, estado = ?, gestion_ingreso = ? WHERE id = ?",
             (becario.nombres, becario.apellidos, becario.ci,
              becario.codigo_estudiante, becario.carrera, becario.contacto,
-             becario.tipo_beca, becario.estado, becario.id),
+             becario.tipo_beca, becario.estado, becario.gestion_ingreso, becario.id),
         )
         conn.commit()
         return becario

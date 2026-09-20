@@ -30,6 +30,77 @@ from app.services import becario_service
 from app.services.becario_service import BecarioDuplicadoError
 from app.ui import theme
 from app.ui.dialogo_base import DialogoBase
+from app.ui.overlay import ejecutar_con_overlay
+
+
+TEXTO_FOTO_EN_DESARROLLO = (
+    "Función en desarrollo. Próximamente podrás cargar "
+    "los datos del estudiante desde una foto de la solicitud."
+)
+
+
+class DialogoFuncionEnDesarrollo(DialogoBase):
+    """Aviso simple con X, clic fuera (overlay) y botón Entendido."""
+
+    def __init__(self, parent=None, mensaje: str = ""):
+        super().__init__(parent, modal=True)
+        self.setWindowTitle("UNANDES • Aviso")
+        self._build_ui(mensaje)
+        self._apply_style()
+
+    def _build_ui(self, mensaje: str):
+        root = QVBoxLayout(self)
+        root.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        root.setContentsMargins(24, 24, 24, 24)
+
+        card = QFrame(self)
+        card.setObjectName("cardMensaje")
+        card.setMinimumWidth(320)
+        card.setMaximumWidth(440)
+        layout = QVBoxLayout(card)
+        layout.setSpacing(14)
+        layout.setContentsMargins(32, 28, 32, 28)
+
+        encabezado = QHBoxLayout()
+        encabezado.addStretch(1)
+        encabezado.addWidget(self.crear_boton_x(card))
+        layout.addLayout(encabezado)
+
+        texto = QLabel(mensaje, card)
+        texto.setObjectName("textoMensaje")
+        texto.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        texto.setWordWrap(True)
+        layout.addWidget(texto)
+
+        self.btn_entendido = QPushButton("Entendido", card)
+        self.btn_entendido.setObjectName("aceptarExito")
+        self.btn_entendido.setDefault(True)
+        self.btn_entendido.clicked.connect(self.accept)
+        layout.addWidget(self.btn_entendido)
+
+        root.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
+
+    def _apply_style(self):
+        self.setStyleSheet(f"""
+            QDialog {{ background: transparent; }}
+            QFrame#cardMensaje {{
+                background-color: {theme.AZUL_TARJETA};
+                border: 1px solid {theme.AZUL_BORDE};
+                border-radius: 16px;
+            }}
+            QToolButton#cerrar {{
+                color: {theme.TEXTO_SECUNDARIO}; font-size: 14px; font-weight: 700;
+                background: transparent; border: none; padding: 4px 8px;
+            }}
+            QToolButton#cerrar:hover {{ color: {theme.TEXTO_ERROR}; }}
+            QLabel#textoMensaje {{ color: {theme.TEXTO_PRINCIPAL}; font-size: 14px; font-weight: 600; }}
+            QPushButton#aceptarExito {{
+                background-color: {theme.VERDE_LIMA}; color: #0a1633;
+                font-size: 14px; font-weight: 800; border: none;
+                border-radius: 8px; padding: 11px;
+            }}
+            QPushButton#aceptarExito:hover {{ background-color: {theme.VERDE_LIMA_HOVER}; }}
+        """)
 
 
 class BecarioFormWindow(DialogoBase):
@@ -95,6 +166,10 @@ class BecarioFormWindow(DialogoBase):
             QRegularExpression("^[0-9]*$"), card)
         self.txt_nombres = QLineEdit(card)
         self.txt_apellidos = QLineEdit(card)
+        self.txt_nombres.editingFinished.connect(
+            lambda: self._aplicar_mayuscula_inicial(self.txt_nombres))
+        self.txt_apellidos.editingFinished.connect(
+            lambda: self._aplicar_mayuscula_inicial(self.txt_apellidos))
         self.txt_ci = QLineEdit(card)
         self.txt_ci.setValidator(validador_digitos)
         self.txt_codigo = QLineEdit(card)
@@ -103,9 +178,24 @@ class BecarioFormWindow(DialogoBase):
         for sigla, etiqueta in becario_service.opciones_carrera():
             self.cmb_carrera.addItem(etiqueta, sigla)
         self.cmb_carrera.setMaxVisibleItems(self.cmb_carrera.count())
+        self.cmb_carrera.setPlaceholderText("Seleccione una carrera")
+        self.cmb_carrera.setCurrentIndex(-1)
         self.cmb_tipo = QComboBox(card)
         self.cmb_tipo.addItems(becario_service.listar_tipos_beca())
         self.cmb_tipo.setMaxVisibleItems(self.cmb_tipo.count())
+        self.cmb_tipo.setPlaceholderText("Seleccione un tipo de beca")
+        self.cmb_tipo.setCurrentIndex(-1)
+        self.cmb_ingreso = QComboBox(card)
+        if self.becario_id is None:
+            for gestion in becario_service.gestiones_ingreso_nuevo():
+                self.cmb_ingreso.addItem(gestion, gestion)
+        else:
+            for gestion in becario_service.gestiones_ingreso_editar():
+                self.cmb_ingreso.addItem(gestion, gestion)
+            self.cmb_ingreso.addItem("—", "")
+        self.cmb_ingreso.setMaxVisibleItems(self.cmb_ingreso.count())
+        self.cmb_ingreso.setPlaceholderText("Seleccione la gestión")
+        self.cmb_ingreso.setCurrentIndex(0)
         self.txt_contacto = QLineEdit(card)
         self.txt_contacto.setValidator(validador_digitos)
         self.txt_contacto.setPlaceholderText("Celular, solo números (opcional)")
@@ -116,6 +206,7 @@ class BecarioFormWindow(DialogoBase):
             self.txt_codigo,
             self.cmb_carrera,
             self.cmb_tipo,
+            self.cmb_ingreso,
             self.txt_contacto,
         ):
             self._controles_editables.append(control)
@@ -125,6 +216,7 @@ class BecarioFormWindow(DialogoBase):
         form.addRow("Código:", self.txt_codigo)
         form.addRow("Carrera:", self.cmb_carrera)
         form.addRow("Tipo de Beca:", self.cmb_tipo)
+        form.addRow("Gestión de ingreso:", self.cmb_ingreso)
         form.addRow("Contacto:", self.txt_contacto)
         layout.addLayout(form)
 
@@ -153,7 +245,19 @@ class BecarioFormWindow(DialogoBase):
         fila_botones.addWidget(self.btn_cancelar)
         layout.addLayout(fila_botones)
 
+        fila_foto = QHBoxLayout()
+        fila_foto.addStretch(1)
+        self.btn_foto = QPushButton("Cargar datos desde foto", card)
+        self.btn_foto.setObjectName("foto")
+        self.btn_foto.setToolTip("Próximamente: cargar los datos desde una foto")
+        self.btn_foto.clicked.connect(self.al_pulsar_cargar_desde_foto)
+        fila_foto.addWidget(self.btn_foto)
+        fila_foto.addStretch(1)
+        layout.addLayout(fila_foto)
+        self.btn_foto.setVisible(self.becario_id is None)
+
         root.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.txt_nombres.setFocus()
 
     def _precargar(self):
         becario = becario_service.obtener_becario(self.becario_id)
@@ -169,6 +273,14 @@ class BecarioFormWindow(DialogoBase):
         indice_tipo = self.cmb_tipo.findText(becario.tipo_beca)
         if indice_tipo >= 0:
             self.cmb_tipo.setCurrentIndex(indice_tipo)
+        indice_ingreso = self.cmb_ingreso.findData(becario.gestion_ingreso or "")
+        if indice_ingreso < 0 and becario.gestion_ingreso:
+            self.cmb_ingreso.insertItem(
+                self.cmb_ingreso.count() - 1,
+                becario.gestion_ingreso, becario.gestion_ingreso)
+            indice_ingreso = self.cmb_ingreso.findData(becario.gestion_ingreso)
+        if indice_ingreso >= 0:
+            self.cmb_ingreso.setCurrentIndex(indice_ingreso)
         self.txt_contacto.setText(becario.contacto)
 
     def _guardar_snapshot(self):
@@ -181,6 +293,7 @@ class BecarioFormWindow(DialogoBase):
             "codigo_estudiante": self.txt_codigo.text(),
             "carrera": self.cmb_carrera.currentData() or self.cmb_carrera.currentText(),
             "tipo_beca": self.cmb_tipo.currentText(),
+            "gestion_ingreso": self.cmb_ingreso.currentData() or "",
             "contacto": self.txt_contacto.text(),
         }
 
@@ -199,6 +312,10 @@ class BecarioFormWindow(DialogoBase):
         indice_tipo = self.cmb_tipo.findText(tipo)
         if indice_tipo >= 0:
             self.cmb_tipo.setCurrentIndex(indice_tipo)
+        ingreso = self._snapshot_original.get("gestion_ingreso", "")
+        indice_ingreso = self.cmb_ingreso.findData(ingreso)
+        if indice_ingreso >= 0:
+            self.cmb_ingreso.setCurrentIndex(indice_ingreso)
         self.txt_contacto.setText(self._snapshot_original.get("contacto", ""))
 
     def _actualizar_estado_formulario(self):
@@ -234,23 +351,24 @@ class BecarioFormWindow(DialogoBase):
             return
         self.reject()
 
-    def _datos_formulario(self) -> dict:
-        def _capitalizar_persona(valor: str) -> str:
-            texto = (valor or "").strip()
-            if not texto:
-                return ""
-            return " ".join(
-                parte[:1].upper() + parte[1:].lower() if parte else ""
-                for parte in texto.split()
-            )
+    def al_pulsar_cargar_desde_foto(self):
+        """Muestra el aviso (la carga real desde foto se conecta aquí después)."""
+        dialogo = DialogoFuncionEnDesarrollo(self, mensaje=TEXTO_FOTO_EN_DESARROLLO)
+        ejecutar_con_overlay(self.parentWidget() or self, dialogo)
 
+    def _aplicar_mayuscula_inicial(self, campo: QLineEdit):
+        """Normaliza el campo al salir de él (se ve el resultado de inmediato)."""
+        campo.setText(becario_service.normalizar_nombre_propio(campo.text()))
+
+    def _datos_formulario(self) -> dict:
         return {
-            "nombres": _capitalizar_persona(self.txt_nombres.text()),
-            "apellidos": _capitalizar_persona(self.txt_apellidos.text()),
+            "nombres": self.txt_nombres.text(),
+            "apellidos": self.txt_apellidos.text(),
             "ci": self.txt_ci.text(),
             "codigo_estudiante": self.txt_codigo.text(),
             "carrera": self.cmb_carrera.currentData() or self.cmb_carrera.currentText(),
             "tipo_beca": self.cmb_tipo.currentText(),
+            "gestion_ingreso": self.cmb_ingreso.currentData() or "",
             "contacto": self.txt_contacto.text(),
         }
 
@@ -325,6 +443,11 @@ class BecarioFormWindow(DialogoBase):
                 background-color: transparent; color: {theme.TEXTO_PRINCIPAL};
                 font-size: 13px; font-weight: 700;
                 border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px; padding: 10px;
+            }}
+            QPushButton#foto {{
+                background-color: transparent; color: {theme.TEXTO_SECUNDARIO};
+                font-size: 12px; font-weight: 600;
+                border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px; padding: 9px 16px;
             }}
             QPushButton#editar {{
                 background-color: {theme.AZUL_BORDE}; color: {theme.TEXTO_PRINCIPAL};

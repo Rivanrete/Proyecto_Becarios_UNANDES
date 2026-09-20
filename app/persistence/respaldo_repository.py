@@ -11,7 +11,8 @@ from app.persistence.database import DB_PATH, get_connection
 _COLUMNAS = ("id, gestion_respaldada, becario_id, nombres, apellidos, ci,"
              " codigo_estudiante, carrera, contacto, tipo_beca, estado,"
              " porcentaje_anterior, porcentaje_gestion, horas_becarias,"
-             " materias_en_orden, carpeta_cancelada, carta_renovacion, creado_en")
+             " materias_en_orden, carpeta_cancelada, carta_renovacion,"
+             " gestion_ingreso, creado_en")
 
 
 def _mapear(fila) -> RespaldoBecario:
@@ -27,6 +28,7 @@ def _mapear(fila) -> RespaldoBecario:
         materias_en_orden=bool(fila["materias_en_orden"]),
         carpeta_cancelada=bool(fila["carpeta_cancelada"]),
         carta_renovacion=bool(fila["carta_renovacion"]),
+        gestion_ingreso=fila["gestion_ingreso"] if "gestion_ingreso" in fila.keys() else "",
         creado_en=fila["creado_en"],
     )
 
@@ -43,8 +45,8 @@ def guardar_respaldo(gestion: str, filas: list[tuple, ...], db_path: Path = DB_P
                 "INSERT INTO respaldo_becario (gestion_respaldada, becario_id, nombres,"
                 " apellidos, ci, codigo_estudiante, carrera, contacto, tipo_beca, estado,"
                 " porcentaje_anterior, porcentaje_gestion, horas_becarias, materias_en_orden,"
-                " carpeta_cancelada, carta_renovacion, creado_en)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " carpeta_cancelada, carta_renovacion, gestion_ingreso, creado_en)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (gestion, becario.id, becario.nombres, becario.apellidos, becario.ci,
                  becario.codigo_estudiante, becario.carrera, becario.contacto,
                  becario.tipo_beca, becario.estado,
@@ -54,6 +56,7 @@ def guardar_respaldo(gestion: str, filas: list[tuple, ...], db_path: Path = DB_P
                  int(seg.materias_en_orden) if seg else 0,
                  int(seg.carpeta_cancelada) if seg else 0,
                  int(seg.carta_renovacion) if seg else 0,
+                 becario.gestion_ingreso,
                  ahora),
             )
         conn.commit()
