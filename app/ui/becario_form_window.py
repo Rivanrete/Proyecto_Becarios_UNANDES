@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QToolButton,
     QVBoxLayout,
@@ -160,10 +161,12 @@ class BecarioFormWindow(DialogoBase):
 
         form = QFormLayout()
         form.setSpacing(10)
-        # Solo dígitos (incluye ceros a la izquierda): bloquea letras y
-        # símbolos al escribir y al pegar. La BD sigue guardando TEXT.
-        validador_digitos = QRegularExpressionValidator(
-            QRegularExpression("^[0-9]*$"), card)
+        # Solo enteros positivos: no acepta letras, espacios ni caracteres
+        # especiales. La BD sigue guardando TEXT, pero el input queda restringido.
+        validador_enteros_positivos = QRegularExpressionValidator(
+            QRegularExpression("^[1-9][0-9]*$"), card)
+        validador_contacto = QRegularExpressionValidator(
+            QRegularExpression("^[1-9][0-9]{0,7}$"), card)
         self.txt_nombres = QLineEdit(card)
         self.txt_apellidos = QLineEdit(card)
         self.txt_nombres.editingFinished.connect(
@@ -171,9 +174,11 @@ class BecarioFormWindow(DialogoBase):
         self.txt_apellidos.editingFinished.connect(
             lambda: self._aplicar_mayuscula_inicial(self.txt_apellidos))
         self.txt_ci = QLineEdit(card)
-        self.txt_ci.setValidator(validador_digitos)
+        self.txt_ci.setValidator(validador_enteros_positivos)
+        self.txt_ci.setMaxLength(15)
         self.txt_codigo = QLineEdit(card)
-        self.txt_codigo.setValidator(validador_digitos)
+        self.txt_codigo.setValidator(validador_enteros_positivos)
+        self.txt_codigo.setMaxLength(15)
         self.cmb_carrera = QComboBox(card)
         for sigla, etiqueta in becario_service.opciones_carrera():
             self.cmb_carrera.addItem(etiqueta, sigla)
@@ -197,7 +202,8 @@ class BecarioFormWindow(DialogoBase):
         self.cmb_ingreso.setPlaceholderText("Seleccione la gestión")
         self.cmb_ingreso.setCurrentIndex(0)
         self.txt_contacto = QLineEdit(card)
-        self.txt_contacto.setValidator(validador_digitos)
+        self.txt_contacto.setValidator(validador_contacto)
+        self.txt_contacto.setMaxLength(8)
         self.txt_contacto.setPlaceholderText("Celular, solo números (opcional)")
         for control in (
             self.txt_nombres,
@@ -374,6 +380,47 @@ class BecarioFormWindow(DialogoBase):
 
     def _on_guardar(self):
         self.lbl_error.setVisible(False)
+
+        nombres = self.txt_nombres.text().strip()
+        apellidos = self.txt_apellidos.text().strip()
+        ci = self.txt_ci.text().strip()
+        codigo = self.txt_codigo.text().strip()
+
+        if not nombres or not apellidos or not ci or not codigo:
+            QMessageBox.warning(
+                self,
+                "Campos obligatorios",
+                "Completa los campos: Nombres, Apellidos, CI y Código.",
+            )
+            self.lbl_error.setText("Completa los campos obligatorios antes de guardar.")
+            self.lbl_error.setVisible(True)
+            return
+
+        if self.becario_id is not None:
+            excludes = self.becario_id
+        else:
+            excludes = None
+
+        if becario_service.becario_repository.existe_ci(ci, excluir_id=excludes):
+            QMessageBox.warning(
+                self,
+                "CI duplicado",
+                "El CI ya se encuentra registrado por otro becario.",
+            )
+            self.lbl_error.setText("El CI ya se encuentra registrado por otro becario.")
+            self.lbl_error.setVisible(True)
+            return
+
+        if becario_service.becario_repository.existe_codigo(codigo, excluir_id=excludes):
+            QMessageBox.warning(
+                self,
+                "Código duplicado",
+                "El código de estudiante ya existe en la base de datos.",
+            )
+            self.lbl_error.setText("El código de estudiante ya existe en la base de datos.")
+            self.lbl_error.setVisible(True)
+            return
+
         try:
             if self.becario_id is None:
                 becario_service.registrar_becario(self._datos_formulario())
@@ -382,10 +429,12 @@ class BecarioFormWindow(DialogoBase):
                 becario_service.editar_becario(self.becario_id, self._datos_formulario())
                 mensaje = "Becario actualizado correctamente."
         except BecarioDuplicadoError as e:
+            QMessageBox.warning(self, "Datos duplicados", str(e))
             self.lbl_error.setText(str(e) + " No se guardó el registro.")
             self.lbl_error.setVisible(True)
             return
         except ValueError as e:
+            QMessageBox.warning(self, "Validación", str(e))
             self.lbl_error.setText(str(e))
             self.lbl_error.setVisible(True)
             return
