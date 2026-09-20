@@ -10,7 +10,12 @@ from app.models.becario import Becario
 from app.models.seguimiento_becario import SeguimientoBecario
 from app.persistence import becario_repository, carrera_repository, seguimiento_repository, tipo_beca_repository
 from app.persistence.database import DB_PATH
-from app.services.gestion_service import obtener_gestion_actual, obtener_gestion_predeterminada
+from app.services.gestion_service import (
+    clave_gestion,
+    obtener_gestion_actual,
+    obtener_gestion_predeterminada,
+    ordenar_gestiones,
+)
 
 CAMPOS_REQUERIDOS = ("nombres", "apellidos", "ci", "codigo_estudiante", "carrera", "tipo_beca")
 
@@ -188,9 +193,9 @@ def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
     if becario_repository.existe_codigo(limpio["codigo_estudiante"], db_path=db_path):
         raise BecarioDuplicadoError("codigo_estudiante")
     becario = becario_repository.insertar_becario(Becario(id=None, **limpio), db_path)
-    gestion = obtener_gestion_actual()
+    gestion_inicial = limpio["gestion_ingreso"] or obtener_gestion_actual()
     seguimiento_repository.crear_seguimiento(
-        SeguimientoBecario(id=None, becario_id=becario.id, gestion=gestion,
+        SeguimientoBecario(id=None, becario_id=becario.id, gestion=gestion_inicial,
                            porcentaje_anterior="0%", porcentaje_gestion="0%",
                            horas_becarias=False, materias_en_orden=True,
                            carpeta_cancelada=False, carta_renovacion=False),
@@ -363,8 +368,18 @@ def eliminar_inactivos(db_path: Path = DB_PATH) -> int:
 
 
 def historial_gestiones(becario_id: int, db_path: Path = DB_PATH) -> list[str]:
-    """Historial del becario (primera a más reciente). Solo lectura, sin tablas nuevas."""
-    return seguimiento_repository.listar_gestiones(becario_id, db_path)
+    """Historial cronológico del becario desde su gestión de ingreso.
+
+    La gestión de ingreso es fija y no se sobrescribe al cambiar la gestión
+    activa; por eso se incorpora siempre como primer punto del historial y no se
+    pierde aunque no exista un seguimiento físico para ese período.
+    """
+    becario = becario_repository.buscar_por_id(becario_id, db_path)
+    gestiones = []
+    if becario is not None and becario.gestion_ingreso:
+        gestiones.append(becario.gestion_ingreso)
+    gestiones.extend(seguimiento_repository.listar_gestiones(becario_id, db_path))
+    return ordenar_gestiones(gestiones)
 
 
 def contar_becarios_por_categoria(db_path: Path = DB_PATH) -> list[tuple[str, int]]:
