@@ -456,28 +456,33 @@ class BecarioFormWindow(DialogoBase):
             QToolButton#cerrar:hover {{ color: {theme.TEXTO_ERROR}; }}
             QLabel#titulo {{ color: {theme.TEXTO_PRINCIPAL}; font-size: 22px; font-weight: 800; }}
             QLabel {{ color: {theme.TEXTO_SECUNDARIO}; font-size: 13px; font-weight: 600; }}
-            QLineEdit {{
-                background-color: {theme.AZUL_CAMPO}; color: {theme.TEXTO_PRINCIPAL};
-                border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px; padding: 10px;
-                font-size: 14px; min-height: 22px;
+            QLineEdit, QComboBox, QTextEdit {{
+                background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_INPUT};
+                border: 1px solid {theme.BORDE_INPUT}; border-radius: 8px;
+                padding: 10px; font-size: 14px; min-height: 22px;
             }}
-            QLineEdit:focus {{ border: 1px solid {theme.VERDE_LIMA}; }}
+            QLineEdit::placeholder, QTextEdit::placeholder {{ color: {theme.TEXTO_PLACEHOLDER}; }}
+            QLineEdit {{ qproperty-placeholderTextColor: {theme.TEXTO_PLACEHOLDER}; }}
+            QLineEdit:focus, QComboBox:focus, QTextEdit:focus {{
+                border: 1px solid #60A5FA; background-color: {theme.BLANCO_TARJETA};
+            }}
+            QLineEdit:read-only, QTextEdit:read-only,
+            QLineEdit:disabled, QComboBox:disabled, QTextEdit:disabled {{
+                background-color: {theme.FONDO_INPUT_READONLY}; color: {theme.TEXTO_INPUT};
+                border: 1px solid {theme.BORDE_INPUT};
+            }}
             QComboBox {{
-                background-color: {theme.AZUL_CAMPO}; color: {theme.TEXTO_PRINCIPAL};
-                border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px;
                 padding: 10px 34px 10px 12px;
-                font-size: 14px; min-height: 22px;
             }}
-            QComboBox:focus {{ border: 1px solid {theme.VERDE_LIMA}; }}
             QComboBox::drop-down {{
                 subcontrol-origin: padding;
                 subcontrol-position: top right;
                 width: 28px; border: none;
             }}
             QComboBox QAbstractItemView {{
-                background-color: {theme.AZUL_CAMPO}; color: {theme.TEXTO_PRINCIPAL};
-                selection-background-color: {theme.VERDE_LIMA}; selection-color: #0a1633;
-                border: 1px solid {theme.AZUL_BORDE}; outline: 0;
+                background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_INPUT};
+                selection-background-color: #DBEAFE; selection-color: {theme.TEXTO_INPUT};
+                border: 1px solid {theme.BORDE_INPUT}; outline: 0;
                 font-size: 14px;
             }}
             QComboBox QAbstractItemView::item {{ min-height: 30px; padding: 4px 8px; }}

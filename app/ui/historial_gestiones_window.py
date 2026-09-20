@@ -75,9 +75,14 @@ class HistorialGestionesWindow(DialogoBase):
             }}
             QToolButton#cerrar:hover {{ color: {theme.TEXTO_ERROR}; }}
             QListWidget#listaHist {{
-                background-color: {theme.AZUL_CAMPO}; color: {theme.TEXTO_PRINCIPAL};
+                background-color: {theme.AZUL_TARJETA}; color: {theme.TEXTO_PRINCIPAL};
                 border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px;
                 font-size: 13px; padding: 6px;
             }}
-            QListWidget#listaHist::item {{ padding: 6px; }}
+            QListWidget#listaHist::item {{
+                color: {theme.TEXTO_PRINCIPAL}; background-color: transparent; padding: 6px;
+            }}
+            QListWidget#listaHist::item:selected {{
+                background-color: rgba(140,184,44,0.25); color: {theme.TEXTO_PRINCIPAL};
+            }}
         """)
