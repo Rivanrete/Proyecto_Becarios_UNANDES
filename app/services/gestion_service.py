@@ -76,6 +76,10 @@ def resetear_periodo(db_path: Path = DB_PATH, gestion_nueva: str | None = None) 
             seguimiento_repository.crear_seguimiento(SeguimientoBecario(
                 id=None, becario_id=becario.id, gestion=nueva), db_path)
         res["seguimientos"] += 1
+    # Cada gestión empieza sin fecha límite: la Lic. la define a mano.
+    # Import local: becario_service importa este módulo (ciclo si es global).
+    from app.services import becario_service
+    becario_service.limpiar_fecha_limite(db_path)
     return res
 
 

@@ -5,10 +5,12 @@ escritura. La UI nunca valida por su cuenta, solo llama aquí y muestra
 el resultado. Duplicados se señalan con BecarioDuplicadoError(campo).
 """
 from pathlib import Path
+from datetime import date, datetime
 
 from app.models.becario import Becario
 from app.models.seguimiento_becario import SeguimientoBecario
 from app.persistence import becario_repository, carrera_repository, seguimiento_repository, tipo_beca_repository
+from app.persistence import configuracion_repository
 from app.persistence.database import DB_PATH
 from app.services.gestion_service import obtener_gestion_actual, obtener_gestion_predeterminada
 
@@ -364,6 +366,71 @@ def contar_becarios_por_categoria(db_path: Path = DB_PATH) -> list[tuple[str, in
         (t.nombre, conteo.get(t.nombre, 0))
         for t in tipo_beca_repository.listar_todos(db_path)
     ]
+
+
+# ---------------------------------------------------------------------------
+# Fecha límite de requisitos (alerta visual de vencidos).
+# Clave en la tabla configuracion (sin migraciones): "YYYY-MM-DD" o ausente.
+# La define la Lic. a mano; cada cambio de gestión la resetea a vacío
+# (ver gestion_service.resetear_periodo). Sin fecha no hay vencidos.
+# ---------------------------------------------------------------------------
+CLAVE_FECHA_LIMITE = "fecha_limite_requisitos"
+
+FLAGS_REQUISITOS = ("materias_en_orden", "carpeta_cancelada",
+                    "carta_renovacion", "horas_becarias")
+
+
+def obtener_fecha_limite(db_path: Path = DB_PATH) -> str | None:
+    """Fecha límite vigente ("YYYY-MM-DD") o None si no hay / está vacía."""
+    valor = (configuracion_repository.obtener(CLAVE_FECHA_LIMITE, db_path) or "").strip()
+    return valor or None
+
+
+def guardar_fecha_limite(fecha: str | None, db_path: Path = DB_PATH) -> str | None:
+    """Guarda la fecha límite manual (valida calendario real YYYY-MM-DD).
+
+    `None` o vacío la quita (sin fecha límite). Retorna la fecha guardada
+    o None si se quitó. ValueError si el formato o la fecha no es válida.
+    """
+    texto = (fecha or "").strip()
+    if not texto:
+        configuracion_repository.guardar(CLAVE_FECHA_LIMITE, "", db_path)
+        return None
+    try:
+        normalizada = datetime.strptime(texto, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Fecha no válida. Use el formato AAAA-MM-DD (ej: 2026-03-15).")
+    configuracion_repository.guardar(CLAVE_FECHA_LIMITE, normalizada, db_path)
+    return normalizada
+
+
+def limpiar_fecha_limite(db_path: Path = DB_PATH):
+    """Resetea la fecha límite a vacío (cada gestión empieza sin fecha)."""
+    configuracion_repository.guardar(CLAVE_FECHA_LIMITE, "", db_path)
+
+
+def incumple_requisitos(estado: str, seg, fecha_limite: str | None,
+                        hoy: date | None = None) -> bool:
+    """True si el becario está vencido: hoy >= fecha límite y algún flag en falso.
+
+    `seg`: SeguimientoBecario de la gestión activa (o None si no tiene
+    registro: se trata como todo en falso). Sin fecha límite, o con los 4
+    flags en verdadero, o estado Baja/Inactivo: False. Función pura (sin
+    BD) para que la UI la evalúe sobre su caché sin consultas extra.
+    """
+    if (estado or "").strip() == "Baja/Inactivo":
+        return False
+    if not (fecha_limite or "").strip():
+        return False
+    try:
+        limite = datetime.strptime(fecha_limite.strip(), "%Y-%m-%d").date()
+    except ValueError:
+        return False
+    if (hoy or date.today()) < limite:
+        return False
+    if seg is None:
+        return True
+    return any(not bool(getattr(seg, campo, False)) for campo in FLAGS_REQUISITOS)
 
 
 # ---------------------------------------------------------------------------
