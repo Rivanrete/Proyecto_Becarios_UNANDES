@@ -63,11 +63,6 @@ COLUMNAS = [
     "Estado",
 ]
 
-# Pesos proporcionales de columna (suman 100): se aplican sobre el ancho
-# visible para que la tabla quepa sin scroll en pantallas chicas.
-# Horas (7) y Estado (11) reservan lo medido para "No cumplió"/"En renovación".
-PESOS_COLUMNAS = (5, 7, 13, 12, 8, 8, 7, 8, 8, 8, 8, 8)
-
 # Abreviaturas fijas (antes que "…") para los dos badges largos.
 _ABREVIATURAS_FIJAS = {"No cumplió": "No cump.", "En renovación": "En renov."}
 
