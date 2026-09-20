@@ -409,6 +409,15 @@ def limpiar_fecha_limite(db_path: Path = DB_PATH):
     configuracion_repository.guardar(CLAVE_FECHA_LIMITE, "", db_path)
 
 
+def formato_fecha_corta(fecha_iso: str | None) -> str:
+    """'2026-09-20' -> '20/09/26'. Solo visualización (la BD sigue en ISO,
+    para que 'hoy >= fecha_limite' no tenga ambigüedad). '' si no hay."""
+    try:
+        return datetime.strptime((fecha_iso or "").strip(), "%Y-%m-%d").strftime("%d/%m/%y")
+    except ValueError:
+        return ""
+
+
 def incumple_requisitos(estado: str, seg, fecha_limite: str | None,
                         hoy: date | None = None) -> bool:
     """True si el becario está vencido: hoy >= fecha límite y algún flag en falso.

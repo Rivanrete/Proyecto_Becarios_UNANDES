@@ -563,7 +563,8 @@ class PanelControlWindow(QMainWindow):
         ]
         self._fecha_limite = becario_service.obtener_fecha_limite()
         self.btn_fecha_limite.setToolTip(
-            f"Fecha límite vigente: {self._fecha_limite}"
+            "Fecha límite vigente: "
+            f"{becario_service.formato_fecha_corta(self._fecha_limite)}"
             if self._fecha_limite else "Sin fecha límite")
         self.aplicar_filtro(self.txt_busqueda.text())
         self._filtrar_inactivos(self.txt_busqueda.text())
@@ -1145,7 +1146,8 @@ class PanelControlWindow(QMainWindow):
             mostrar_notificacion(self, "Fecha límite eliminada: sin vencidos.", tipo="exito")
         else:
             mostrar_notificacion(
-                self, f"Fecha límite guardada: {guardada} "
+                self, "Fecha límite guardada: "
+                      f"{becario_service.formato_fecha_corta(guardada)} "
                       f"({self.contar_pendientes()} pendientes).", tipo="exito")
 
     def _abrir_editar(self, fila: int, columna: int):
