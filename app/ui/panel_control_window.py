@@ -167,6 +167,7 @@ class PanelControlWindow(QMainWindow):
         self._inactivos_completos: list = []
         self._menu_info: dict = {}
         self._categoria_filtro: str | None = None
+        self._estado_filtro: str | None = None
         self._botones_sidebar: list = []
         self._anchos_proporcionales_listos = False
         self._reajuste_columnas_pendiente = False
@@ -238,6 +239,11 @@ class PanelControlWindow(QMainWindow):
         # HU-06 (+ adelanto HU-07): despliega categorías con conteo y filtra.
         self.btn_filtrar.clicked.connect(self._mostrar_menu_filtrar)
         barra_busqueda.addWidget(self.btn_filtrar)
+
+        self.btn_estado = QPushButton("Estado")
+        self.btn_estado.setObjectName("estadoFiltro")
+        self.btn_estado.clicked.connect(self._mostrar_menu_estado)
+        barra_busqueda.addWidget(self.btn_estado)
         layout_contenido.addLayout(barra_busqueda)
 
         self.tabla = QTableWidget(0, len(COLUMNAS))
@@ -545,15 +551,11 @@ class PanelControlWindow(QMainWindow):
         mostrar_notificacion(self, "Becario eliminado correctamente.", tipo="exito")
 
     def aplicar_filtro(self, texto: str):
-        """Aplica texto Y categoría a la vez: solo pasa la intersección.
-
-        El código filtra por "empieza con"; nombres/apellidos por "contiene".
-        Vacío + "Todas" = todo. "Todas" limpia solo la categoría y conserva
-        el texto escrito.
-        """
+        """Aplica texto, categoría y estado en conjunto (intersección acumulativa)."""
         consulta = _normalizar_texto(texto.strip())
         categoria = self._categoria_filtro
-        if not consulta and categoria is None:
+        estado = self._estado_filtro
+        if not consulta and categoria is None and estado is None:
             self.cargar_seguimientos(list(self._filas_completas))
             return
         filtradas = [
@@ -565,6 +567,7 @@ class PanelControlWindow(QMainWindow):
                 or consulta in _normalizar_texto(f"{fila[3]} {fila[2]}")
                 or consulta in _normalizar_texto(f"{fila[2]} {fila[3]}"))
             and (categoria is None or fila[8] == categoria)
+            and (estado is None or fila[9] == estado)
         ]
         self.cargar_seguimientos(filtradas)
 
@@ -913,6 +916,44 @@ class PanelControlWindow(QMainWindow):
         self.btn_filtrar.setText(etiqueta)
         self.aplicar_filtro(self.txt_busqueda.text())
 
+    def _mostrar_menu_estado(self):
+        """Menú de estado con conteos dinámicos y combinado con otros filtros."""
+        menu = self._construir_menu_estado()
+        menu.exec(self.btn_estado.mapToGlobal(self.btn_estado.rect().bottomLeft()))
+
+    def _construir_menu_estado(self) -> QMenu:
+        """Arma las opciones de estado con cantidades calculadas sobre el conjunto actual."""
+        menu = QMenu(self)
+        menu.setObjectName("menuFiltrar")
+        total = len(self._filas_completas)
+        opciones = {
+            None: "Todos los estados",
+            "Activo": "Activo",
+            "En renovación": "En renovación",
+        }
+        for valor, etiqueta in opciones.items():
+            if valor is None:
+                cantidad = total
+            else:
+                cantidad = sum(1 for _, _, _, _, _, _, _, _, _, estado in self._filas_completas if estado == valor)
+            accion = menu.addAction(f"{etiqueta} ({cantidad})")
+            accion.setCheckable(True)
+            accion.setChecked(self._estado_filtro == valor)
+            accion.triggered.connect(
+                lambda checked=False, v=valor: self._elegir_estado(v)
+            )
+        return menu
+
+    def _elegir_estado(self, estado: str | None):
+        """Fija el filtro de estado y vuelve a aplicar el conjunto de filtros."""
+        self._estado_filtro = estado
+        if estado is None:
+            etiqueta = "Estado"
+        else:
+            etiqueta = f"Estado: {estado}"
+        self.btn_estado.setText(etiqueta)
+        self.aplicar_filtro(self.txt_busqueda.text())
+
     def _abrir_editar(self, fila: int, columna: int):
         """Doble clic en una fila: columna Código abre solo el SIAC;
         el resto abre la ventana de editar (HU-02)."""
@@ -999,6 +1040,11 @@ class PanelControlWindow(QMainWindow):
             }}
             QPushButton#nuevo:hover {{ background-color: {theme.VERDE_LIMA_HOVER}; }}
             QPushButton#filtrar {{
+                background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_OSCURO};
+                font-size: 13px; font-weight: 700;
+                border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px 20px;
+            }}
+            QPushButton#estadoFiltro {{
                 background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_OSCURO};
                 font-size: 13px; font-weight: 700;
                 border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px 20px;
