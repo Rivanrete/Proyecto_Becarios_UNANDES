@@ -17,6 +17,28 @@ from app.persistence.database import DB_PATH
 CLAVE_GESTION = "gestion_activa"
 
 
+def clave_gestion(gestion: str | None) -> tuple[int, int]:
+    """Orden estable para comparar gestiones del tipo I-2024 o II-2026."""
+    texto = (gestion or "").strip()
+    if not texto or "-" not in texto:
+        return (0, 0)
+    periodo, anio = texto.split("-", 1)
+    return int(anio), 1 if periodo.upper() == "I" else 2
+
+
+def ordenar_gestiones(gestiones: list[str] | tuple[str, ...] | set[str]) -> list[str]:
+    """Devuelve gestiones sin duplicados y en orden cronológico."""
+    visibles = []
+    vistos = set()
+    for gestion in gestiones:
+        texto = (gestion or "").strip()
+        if not texto or texto in vistos:
+            continue
+        vistos.add(texto)
+        visibles.append(texto)
+    return sorted(visibles, key=clave_gestion)
+
+
 def obtener_gestion_actual(fecha: Optional[datetime] = None) -> str:
     """Calcula la gestión vigente. `fecha` solo existe para pruebas."""
     f = fecha or datetime.now()

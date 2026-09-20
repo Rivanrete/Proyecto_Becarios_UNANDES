@@ -16,7 +16,7 @@ import unicodedata
 import webbrowser
 
 from PySide6.QtCore import Qt, QEvent, QTimer, Signal, QUrl
-from PySide6.QtGui import QBrush, QColor, QCursor, QDesktopServices, QFont, QFontMetrics
+from PySide6.QtGui import QBrush, QColor, QCursor, QDesktopServices, QFont, QFontMetrics, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 
 from app.models.seguimiento_becario import SeguimientoBecario
 from app.models.usuario import Usuario
+from app.rutas import assets_dir
 from app.services import becario_service
 from app.services import gestion_service
 from app.services import informe_service
@@ -55,10 +56,10 @@ COLUMNAS = [
     "Código",
     "%\nAnterior",
     "Gestión",
-    "Horas\nBecarias",
-    "Materias\nen Orden",
-    "Carpeta\nCancelada",
-    "Carta\nRenovación",
+    "Horas Becarias",
+    "Materias en Orden",
+    "C. C.",
+    "C. de R.",
     "Estado",
 ]
 
@@ -132,8 +133,8 @@ def abrir_perfil_siac(codigo: str):
 COLUMNAS_INACTIVOS = ["N.", "Apellidos", "Nombres", "CI", "Código", "Carrera", "", ""]
 
 COLUMNAS_RESPALDO = ["N.", "Carrera", "Apellidos", "Nombres", "Código",
-                     "% Anterior", "Gestión de ingreso", "Horas Becarias", "Materias en Orden",
-                     "Carpeta Cancelada", "Carta Renovación",
+                     "% Anterior", "Gestión", "Horas Becarias", "Materias en Orden",
+                     "C. C.", "C. de R.",
                      "Estado"]
 
 COLUMNAS_INFORMES = ["N.", "Archivo", "Tamaño", "", ""]
@@ -181,7 +182,12 @@ class PanelControlWindow(QMainWindow):
         self._categoria_filtro: str | None = None
         self._solo_pendientes = False
         self._fecha_limite: str | None = None
+        self._estado_filtro: str | None = None
+        self._filas_vistas: list = []
+        self._pagina_actual = 1
+        self._registros_por_pagina = 15
         self._botones_sidebar: list = []
+        self._botones_pagina: list[QPushButton] = []
         self._anchos_proporcionales_listos = False
         self._reajuste_columnas_pendiente = False
         self._build_ui()
@@ -257,6 +263,11 @@ class PanelControlWindow(QMainWindow):
         self.btn_fecha_limite.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_fecha_limite.clicked.connect(self._definir_fecha_limite)
         barra_busqueda.addWidget(self.btn_fecha_limite)
+
+        self.btn_estado = QPushButton("Estado")
+        self.btn_estado.setObjectName("estadoFiltro")
+        self.btn_estado.clicked.connect(self._mostrar_menu_estado)
+        barra_busqueda.addWidget(self.btn_estado)
         layout_contenido.addLayout(barra_busqueda)
 
         self.tabla = QTableWidget(0, len(COLUMNAS))
@@ -266,16 +277,29 @@ class PanelControlWindow(QMainWindow):
         # Sin foco: ninguna fila se ve distinta hasta que el usuario la seleccione.
         self.tabla.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.tabla.verticalHeader().setVisible(False)
-        # Anchos proporcionales al viewport (Interactive): caben sin scroll
-        # en pantallas chicas y el texto que sobra se abrevia con "…".
         self.tabla.setTextElideMode(Qt.TextElideMode.ElideRight)
         cabecera = self.tabla.horizontalHeader()
-        for i in range(len(COLUMNAS)):
-            cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.Interactive)
+        cabecera.setSectionsMovable(False)
+        cabecera.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        cabecera.setStretchLastSection(False)
+        self.tabla.setColumnWidth(0, 48)
+        self.tabla.setColumnWidth(1, 115)
+        self.tabla.setColumnWidth(2, 150)
+        self.tabla.setColumnWidth(3, 150)
+        self.tabla.setColumnWidth(4, 90)
+        self.tabla.setColumnWidth(5, 86)
+        self.tabla.setColumnWidth(6, 92)
+        self.tabla.setColumnWidth(7, 120)
+        self.tabla.setColumnWidth(8, 120)
+        self.tabla.setColumnWidth(9, 82)
+        self.tabla.setColumnWidth(10, 92)
+        self.tabla.setColumnWidth(11, 90)
         self.tabla.installEventFilter(self)
         # Doble clic abre el becario en modo edición (HU-02, CA-1).
         self.tabla.cellDoubleClicked.connect(self._abrir_editar)
         layout_contenido.addWidget(self.tabla, 1)
+
+        self._build_paginador(layout_contenido)
 
         # Búsqueda en vivo: filtra mientras se escribe (sin Enter ni botón).
         self.txt_busqueda.textChanged.connect(self._al_escribir)
@@ -287,6 +311,139 @@ class PanelControlWindow(QMainWindow):
         self.paginas.addWidget(self._construir_pagina_informes())
         layout_raiz.addWidget(self.paginas, 1)
         self.setCentralWidget(raiz)
+
+    def _build_paginador(self, layout_contenido):
+        """Crea la barra inferior con navegación por páginas para la tabla principal."""
+        fila_paginador = QHBoxLayout()
+        fila_paginador.setSpacing(10)
+        fila_paginador.setContentsMargins(0, 0, 0, 0)
+        fila_paginador.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.btn_pagina_anterior = QPushButton("<")
+        self.btn_pagina_anterior.setObjectName("paginadorBtn")
+        self.btn_pagina_anterior.clicked.connect(self._pagina_anterior)
+        fila_paginador.addStretch(1)
+        fila_paginador.addWidget(self.btn_pagina_anterior)
+
+        self._contenedor_paginas = QWidget()
+        self._layout_paginas = QHBoxLayout(self._contenedor_paginas)
+        self._layout_paginas.setContentsMargins(0, 0, 0, 0)
+        self._layout_paginas.setSpacing(6)
+        self._layout_paginas.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        fila_paginador.addWidget(self._contenedor_paginas)
+
+        self.btn_pagina_siguiente = QPushButton(">")
+        self.btn_pagina_siguiente.setObjectName("paginadorBtn")
+        self.btn_pagina_siguiente.clicked.connect(self._pagina_siguiente)
+        fila_paginador.addWidget(self.btn_pagina_siguiente)
+        fila_paginador.addStretch(1)
+
+        self.lbl_paginacion = QLabel("Mostrando 0-0 de 0 becarios")
+        self.lbl_paginacion.setObjectName("paginadorTexto")
+        self.lbl_paginacion.setAlignment(Qt.AlignmentFlag.AlignRight)
+        fila_paginador.addWidget(self.lbl_paginacion, 1)
+        layout_contenido.addLayout(fila_paginador)
+
+    def _actualizar_paginador(self):
+        """Recalcula páginas, botones y etiqueta informativa para la tabla visible."""
+        total_registros = len(self._filas_vistas)
+        total_paginas = max(1, (total_registros + self._registros_por_pagina - 1) // self._registros_por_pagina)
+        self._pagina_actual = max(1, min(self._pagina_actual, total_paginas))
+
+        self.btn_pagina_anterior.setEnabled(total_registros > 0 and self._pagina_actual > 1)
+        self.btn_pagina_siguiente.setEnabled(total_registros > 0 and self._pagina_actual < total_paginas)
+
+        if total_registros == 0:
+            self.lbl_paginacion.setText("Mostrando 0-0 de 0 becarios")
+        else:
+            inicio = (self._pagina_actual - 1) * self._registros_por_pagina + 1
+            fin = min(self._pagina_actual * self._registros_por_pagina, total_registros)
+            self.lbl_paginacion.setText(f"Mostrando {inicio}-{fin} de {total_registros} becarios")
+
+        for boton in self._botones_pagina:
+            self._layout_paginas.removeWidget(boton)
+            boton.deleteLater()
+        self._botones_pagina.clear()
+
+        for pagina in range(1, total_paginas + 1):
+            boton = QPushButton(str(pagina))
+            boton.setObjectName("paginadorBtnActivo" if pagina == self._pagina_actual else "paginadorBtn")
+            boton.setFixedWidth(42)
+            boton.setCursor(Qt.CursorShape.PointingHandCursor)
+            boton.clicked.connect(lambda checked=False, p=pagina: self._cambiar_pagina(p))
+            self._layout_paginas.addWidget(boton)
+            self._botones_pagina.append(boton)
+
+    def _cambiar_pagina(self, pagina: int):
+        if pagina < 1:
+            return
+        self._pagina_actual = pagina
+        self._render_pagina_actual()
+
+    def _pagina_anterior(self):
+        if self._pagina_actual > 1:
+            self._pagina_actual -= 1
+            self._render_pagina_actual()
+
+    def _pagina_siguiente(self):
+        total_paginas = max(1, (len(self._filas_vistas) + self._registros_por_pagina - 1) // self._registros_por_pagina)
+        if self._pagina_actual < total_paginas:
+            self._pagina_actual += 1
+            self._render_pagina_actual()
+
+    def _render_pagina_actual(self):
+        """Renderiza únicamente la sublista correspondiente a la página actual."""
+        total_registros = len(self._filas_vistas)
+        if total_registros == 0:
+            self.tabla.setRowCount(0)
+            self._ids_fila = []
+            self._menu_info = {}
+            self._fila_sin_resultados()
+            self._actualizar_paginador()
+            return
+
+        total_paginas = max(1, (total_registros + self._registros_por_pagina - 1) // self._registros_por_pagina)
+        self._pagina_actual = max(1, min(self._pagina_actual, total_paginas))
+        inicio = (self._pagina_actual - 1) * self._registros_por_pagina
+        fin = min(inicio + self._registros_por_pagina, total_registros)
+        pagina_actual = self._filas_vistas[inicio:fin]
+
+        self.tabla.setRowCount(0)
+        self._ids_fila = []
+        self._menu_info = {}
+        for indice_local, fila in enumerate(pagina_actual, start=1):
+            fila_real = self.tabla.rowCount()
+            self.tabla.insertRow(fila_real)
+            becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo, estado = fila
+            self._ids_fila.append(becario_id)
+            self._celda_texto(fila_real, 0, str(inicio + indice_local))
+            self._celda_texto(fila_real, 1, carrera)
+            self._celda_texto(fila_real, 2, apellidos)
+            self._celda_texto(fila_real, 3, nombres)
+            self._celda_texto(fila_real, 4, codigo)
+            self._celda_texto(fila_real, 5, seg.porcentaje_anterior)
+            self._celda_texto(fila_real, 6, gestion)
+            self._celda_badge_menu(fila_real, 7, becario_id, "horas_becarias",
+                                     seg.horas_becarias,
+                                     real.gestion if real is not None else None)
+            self._celda_badge_menu(fila_real, 8, becario_id, "materias_en_orden",
+                                     seg.materias_en_orden,
+                                     real.gestion if real is not None else None)
+            self._celda_badge_menu(fila_real, 9, becario_id, "carpeta_cancelada",
+                                     seg.carpeta_cancelada,
+                                     real.gestion if real is not None else None)
+            self._celda_badge_menu(fila_real, 10, becario_id, "carta_renovacion",
+                                     seg.carta_renovacion,
+                                     real.gestion if real is not None else None)
+            self._celda_badge_menu(fila_real, 11, becario_id, "estado", estado, None)
+            if becario_service.incumple_requisitos(
+                    estado, real if real is not None else seg, self._fecha_limite):
+                self._resaltar_fila_vencida(fila_real)
+        if not self._anchos_proporcionales_listos and self.isVisible():
+            if self._aplicar_anchos_proporcionales():
+                self._anchos_proporcionales_listos = True
+        self._reabreviar_badges()
+        self._actualizar_paginador()
 
     def _construir_pagina_inactivos(self) -> QWidget:
         """Segunda página: solo Baja/Inactivo, con botón Eliminar por fila."""
@@ -328,11 +485,41 @@ class PanelControlWindow(QMainWindow):
         layout.setContentsMargins(0, 24, 0, 24)
         layout.setSpacing(4)
 
-        marca = QLabel("UNANDES")
+        marca = QLabel()
         marca.setObjectName("marca")
         marca.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        marca.setContentsMargins(0, 0, 0, 0)
+        marca.setMargin(0)
+        marca.setScaledContents(False)
+        marca.setStyleSheet(
+            f"background-color: {theme.BLANCO_TARJETA}; border-radius: 8px; "
+            "margin: 12px 14px; padding: 8px 12px;"
+        )
+        marca.setMinimumHeight(72)
+        marca.setFixedHeight(72)
+
+        logo_path = assets_dir() / "logo_unandes.png"
+        if not logo_path.exists():
+            logo_path = assets_dir() / "logo-horizontal-unandes.png"
+        if logo_path.exists():
+            pixmap = QPixmap(str(logo_path))
+            if not pixmap.isNull():
+                pixmap = pixmap.scaled(
+                    170,
+                    72,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+                marca.setPixmap(pixmap)
+        else:
+            marca.setText("UNANDES")
+            marca.setStyleSheet(
+                f"background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_OSCURO}; "
+                "font-size: 18px; font-weight: 800; letter-spacing: 2px; "
+                "border-radius: 8px; margin: 12px 14px; padding: 10px 12px;"
+            )
         layout.addWidget(marca)
-        layout.addSpacing(20)
+        layout.addSpacing(16)
 
         for indice, (item, pagina) in enumerate(self.ITEMS_SIDEBAR):
             boton = QPushButton(item, lateral)
@@ -372,6 +559,16 @@ class PanelControlWindow(QMainWindow):
         fila_gestion.addWidget(self.cmb_respaldo, 1)
         layout.addLayout(fila_gestion)
 
+        fila_busqueda_respaldo = QHBoxLayout()
+        fila_busqueda_respaldo.setSpacing(10)
+        self.txt_busqueda_respaldo = QLineEdit()
+        self.txt_busqueda_respaldo.setObjectName("txtBuscarRespaldo")
+        self.txt_busqueda_respaldo.setPlaceholderText("Buscar por nombre, apellido o código...")
+        self.txt_busqueda_respaldo.setClearButtonEnabled(True)
+        self.txt_busqueda_respaldo.textChanged.connect(self._aplicar_filtro_respaldo)
+        fila_busqueda_respaldo.addWidget(self.txt_busqueda_respaldo, 1)
+        layout.addLayout(fila_busqueda_respaldo)
+
         self.lbl_titulo_respaldo = QLabel("Respaldo", pagina)
         self.lbl_titulo_respaldo.setObjectName("tituloRespaldo")
         layout.addWidget(self.lbl_titulo_respaldo)
@@ -386,8 +583,30 @@ class PanelControlWindow(QMainWindow):
             cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         for i in (len(COLUMNAS_RESPALDO) - 2, len(COLUMNAS_RESPALDO) - 1):
             cabecera.setSectionResizeMode(i, QHeaderView.ResizeMode.Stretch)
+        self.tabla_respaldos.setColumnWidth(9, 90)
+        self.tabla_respaldos.setColumnWidth(10, 100)
+        self.tabla_respaldos.setColumnWidth(2, 150)
+        self.tabla_respaldos.setColumnWidth(3, 150)
         layout.addWidget(self.tabla_respaldos, 1)
         return pagina
+
+    def _aplicar_filtro_respaldo(self):
+        """Filtra la tabla de respaldos por nombre, apellido o código."""
+        texto = (self.txt_busqueda_respaldo.text() or "").strip().lower()
+        for fila in range(self.tabla_respaldos.rowCount()):
+            item_codigo = self.tabla_respaldos.item(fila, 4)
+            item_apellido = self.tabla_respaldos.item(fila, 2)
+            item_nombre = self.tabla_respaldos.item(fila, 3)
+            codigo = (item_codigo.text() if item_codigo is not None else "")
+            apellido = (item_apellido.text() if item_apellido is not None else "")
+            nombre = (item_nombre.text() if item_nombre is not None else "")
+            coincide = (
+                not texto
+                or texto in codigo.lower()
+                or texto in apellido.lower()
+                or texto in nombre.lower()
+            )
+            self.tabla_respaldos.setRowHidden(fila, not coincide)
 
     def _cargar_respaldo(self, gestion: str):
         """Puebla la tabla con el snapshot (celdas de texto y badges fijos)."""
@@ -419,6 +638,7 @@ class PanelControlWindow(QMainWindow):
             estado.setAlignment(Qt.AlignmentFlag.AlignCenter)
             estado.setStyleSheet(estilo_estado(r.estado))
             self.tabla_respaldos.setCellWidget(fila, 11, estado)
+        self._aplicar_filtro_respaldo()
 
     def _construir_pagina_informes(self) -> QWidget:
         """Cuarta página: actas generadas en data/informes/, con Abrir/Eliminar."""
@@ -698,7 +918,7 @@ class PanelControlWindow(QMainWindow):
         return sum(1 for fila in self._filas_completas if self._fila_es_pendiente(fila))
 
     def aplicar_filtro(self, texto: str):
-        """Aplica texto Y categoría Y pendientes a la vez: solo pasa la intersección.
+        """Aplica texto, categoría, estado y pendientes (intersección acumulativa).
 
         El código filtra por "empieza con"; nombres/apellidos por "contiene".
         Vacío + "Todas" = todo. "Todas" limpia categoría y pendientes, y
@@ -706,9 +926,12 @@ class PanelControlWindow(QMainWindow):
         """
         consulta = _normalizar_texto(texto.strip())
         categoria = self._categoria_filtro
+        estado = self._estado_filtro
         solo_pendientes = self._solo_pendientes
-        if not consulta and categoria is None and not solo_pendientes:
-            self.cargar_seguimientos(list(self._filas_completas))
+        if not consulta and categoria is None and estado is None and not solo_pendientes:
+            self._filas_vistas = list(self._filas_completas)
+            self._pagina_actual = 1
+            self._render_pagina_actual()
             return
         filtradas = [
             fila for fila in self._filas_completas
@@ -719,50 +942,18 @@ class PanelControlWindow(QMainWindow):
                 or consulta in _normalizar_texto(f"{fila[3]} {fila[2]}")
                 or consulta in _normalizar_texto(f"{fila[2]} {fila[3]}"))
             and (categoria is None or fila[8] == categoria)
+            and (estado is None or fila[9] == estado)
             and (not solo_pendientes or self._fila_es_pendiente(fila))
         ]
-        self.cargar_seguimientos(filtradas)
+        self._filas_vistas = filtradas
+        self._pagina_actual = 1
+        self._render_pagina_actual()
 
     def cargar_seguimientos(self, filas):
-        """Puebla la tabla. `filas`: (becario_id, carrera, apellidos,
-        nombres, codigo, SeguimientoBecario a mostrar, gestion, SeguimientoBecario
-        real o None si aún no tiene registro, tipo_beca, estado)."""
-        self.tabla.setRowCount(0)
-        self._ids_fila = []
-        self._menu_info = {}
-        for i, (becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo, estado) in enumerate(filas, start=1):
-            fila = self.tabla.rowCount()
-            self.tabla.insertRow(fila)
-            self._ids_fila.append(becario_id)
-            self._celda_texto(fila, 0, str(i))
-            self._celda_texto(fila, 1, carrera)
-            self._celda_texto(fila, 2, apellidos)
-            self._celda_texto(fila, 3, nombres)
-            self._celda_texto(fila, 4, codigo)
-            self._celda_texto(fila, 5, seg.porcentaje_anterior)
-            self._celda_texto(fila, 6, gestion)
-            self._celda_badge_menu(fila, 7, becario_id, "horas_becarias",
-                                     seg.horas_becarias,
-                                     real.gestion if real is not None else None)
-            self._celda_badge_menu(fila, 8, becario_id, "materias_en_orden",
-                                     seg.materias_en_orden,
-                                     real.gestion if real is not None else None)
-            self._celda_badge_menu(fila, 9, becario_id, "carpeta_cancelada",
-                                     seg.carpeta_cancelada,
-                                     real.gestion if real is not None else None)
-            self._celda_badge_menu(fila, 10, becario_id, "carta_renovacion",
-                                     seg.carta_renovacion,
-                                     real.gestion if real is not None else None)
-            self._celda_badge_menu(fila, 11, becario_id, "estado", estado, None)
-            if becario_service.incumple_requisitos(
-                    estado, real if real is not None else seg, self._fecha_limite):
-                self._resaltar_fila_vencida(fila)
-        if not self._anchos_proporcionales_listos and self.isVisible():
-            if self._aplicar_anchos_proporcionales():
-                self._anchos_proporcionales_listos = True
-        self._reabreviar_badges()
-        if self.tabla.rowCount() == 0:
-            self._fila_sin_resultados()
+        """Puebla la tabla desde la página actual del conjunto filtrado."""
+        self._filas_vistas = list(filas)
+        self._pagina_actual = 1
+        self._render_pagina_actual()
 
     def _resaltar_fila_vencida(self, fila_visible: int):
         """Tiñe las celdas de texto de la fila (los badges no se tocan)."""
@@ -853,12 +1044,28 @@ class PanelControlWindow(QMainWindow):
                 info.get("columna", 0), info.get("completo", ""), etiqueta.font()))
 
     def _aplicar_anchos_proporcionales(self) -> bool:
-        """Reparte el ancho visible según PESOS_COLUMNAS (sin scroll)."""
+        """Fija anchos manejados por código para evitar cortes y bloquear el arrastre manual."""
         base = max(0, self.tabla.viewport().width())
         if base <= 0:
             return False
-        for i, peso in enumerate(PESOS_COLUMNAS):
-            self.tabla.setColumnWidth(i, max(30, base * peso // 100))
+        anchos = [48, 115, 150, 150, 90, 86, 92, 120, 120, 82, 92, 90]
+        if sum(anchos) > base:
+            exceso = sum(anchos) - base
+            # Se reducen primero los segmentos menos críticos para mantener
+            # los encabezados largos legibles sin permitir cambios manuales.
+            columnas_reducibles = [1, 2, 3, 5, 6, 9, 10, 11]
+            while exceso > 0 and columnas_reducibles:
+                for idx in columnas_reducibles:
+                    if anchos[idx] > 36:
+                        anchos[idx] -= 2
+                        exceso -= 2
+                        if exceso <= 0:
+                            break
+                if exceso <= 0:
+                    break
+                columnas_reducibles = [i for i in columnas_reducibles if anchos[i] > 36]
+        for i, ancho in enumerate(anchos):
+            self.tabla.setColumnWidth(i, ancho)
         self._ajustar_encabezados_al_ancho()
         self._reabreviar_badges()
         return True
@@ -986,7 +1193,8 @@ class PanelControlWindow(QMainWindow):
 
         Si sigue pendiente, asegura el resaltado; si dejó de serlo, lo
         quita; y si la vista está filtrada en "Pendientes", la fila sale
-        de la vista (igual que un pase a Baja/Inactivo).
+        de la vista (igual que un pase a Baja/Inactivo). Respeta la
+        paginación: purga de _filas_vistas y re-renderiza la página.
         """
         indice_cache = next(
             (i for i, fila in enumerate(self._filas_completas) if fila[0] == becario_id), None)
@@ -994,19 +1202,16 @@ class PanelControlWindow(QMainWindow):
             return
         pendiente = self._fila_es_pendiente(self._filas_completas[indice_cache])
         fila_visible = self._indice_visible_de_becario(becario_id)
-        if fila_visible is None:
-            return
         if pendiente:
-            self._resaltar_fila_vencida(fila_visible)
+            if fila_visible is not None:
+                self._resaltar_fila_vencida(fila_visible)
             return
-        self._quitar_resaltado_fila(fila_visible)
+        if fila_visible is not None:
+            self._quitar_resaltado_fila(fila_visible)
         if self._solo_pendientes:
-            self._olvidar_badges_de_fila(fila_visible)
-            self.tabla.removeRow(fila_visible)
-            self._ids_fila.pop(fila_visible)
-            self._renumerar_columna_n()
-            if not self._ids_fila:
-                self._fila_sin_resultados()
+            self._filas_vistas = [f for f in self._filas_vistas if f[0] != becario_id]
+            if fila_visible is not None:
+                self._render_pagina_actual()
 
     def _reflejar_cambio_estado(self, etiqueta: QLabel, becario_id: int, nuevo_estado: str):
         """Refleja el cambio de estado: badge en sitio, o salida a inactivos."""
@@ -1017,20 +1222,18 @@ class PanelControlWindow(QMainWindow):
             return
         if nuevo_estado == "Baja/Inactivo":
             self._filas_completas.pop(indice_cache)
-            fila_visible = self._indice_visible_de_becario(becario_id)
-            if fila_visible is not None:
-                self._olvidar_badges_de_fila(fila_visible)
-                self.tabla.removeRow(fila_visible)
-                self._ids_fila.pop(fila_visible)
-                self._renumerar_columna_n()
-                if not self._ids_fila:
-                    self._fila_sin_resultados()
+            self._filas_vistas = [f for f in self._filas_vistas if f[0] != becario_id]
+            self._render_pagina_actual()
             self._recargar_inactivos()
             return
         fila = self._filas_completas[indice_cache]
         self._filas_completas[indice_cache] = (
             fila[0], fila[1], fila[2], fila[3], fila[4], fila[5],
             fila[6], fila[7], fila[8], nuevo_estado)
+        if self._estado_filtro is not None and nuevo_estado != self._estado_filtro:
+            self._filas_vistas = [f for f in self._filas_vistas if f[0] != becario_id]
+            self._render_pagina_actual()
+            return
         self._pintar_badge(etiqueta, "estado", nuevo_estado)
 
     def _indice_visible_de_becario(self, becario_id: int) -> int | None:
@@ -1046,15 +1249,6 @@ class PanelControlWindow(QMainWindow):
             insignia = self.tabla.cellWidget(fila_visible, columna)
             if insignia in self._menu_info:
                 del self._menu_info[insignia]
-
-    def _renumerar_columna_n(self):
-        """Reescribe la columna N. (1..n) tras quitar una fila visible."""
-        if len(self._ids_fila) != self.tabla.rowCount():
-            return
-        for numero in range(self.tabla.rowCount()):
-            celda = self.tabla.item(numero, 0)
-            if celda is not None:
-                celda.setText(str(numero + 1))
 
     def _recargar_inactivos(self):
         """Actualiza solo la página de inactivos (barato: 1 consulta + filtro)."""
@@ -1150,6 +1344,44 @@ class PanelControlWindow(QMainWindow):
                       f"{becario_service.formato_fecha_corta(guardada)} "
                       f"({self.contar_pendientes()} pendientes).", tipo="exito")
 
+    def _mostrar_menu_estado(self):
+        """Menú de estado con conteos dinámicos y combinado con otros filtros."""
+        menu = self._construir_menu_estado()
+        menu.exec(self.btn_estado.mapToGlobal(self.btn_estado.rect().bottomLeft()))
+
+    def _construir_menu_estado(self) -> QMenu:
+        """Arma las opciones de estado con cantidades calculadas sobre el conjunto actual."""
+        menu = QMenu(self)
+        menu.setObjectName("menuFiltrar")
+        total = len(self._filas_completas)
+        opciones = {
+            None: "Todos los estados",
+            "Activo": "Activo",
+            "En renovación": "En renovación",
+        }
+        for valor, etiqueta in opciones.items():
+            if valor is None:
+                cantidad = total
+            else:
+                cantidad = sum(1 for _, _, _, _, _, _, _, _, _, estado in self._filas_completas if estado == valor)
+            accion = menu.addAction(f"{etiqueta} ({cantidad})")
+            accion.setCheckable(True)
+            accion.setChecked(self._estado_filtro == valor)
+            accion.triggered.connect(
+                lambda checked=False, v=valor: self._elegir_estado(v)
+            )
+        return menu
+
+    def _elegir_estado(self, estado: str | None):
+        """Fija el filtro de estado y vuelve a aplicar el conjunto de filtros."""
+        self._estado_filtro = estado
+        if estado is None:
+            etiqueta = "Estado"
+        else:
+            etiqueta = f"Estado: {estado}"
+        self.btn_estado.setText(etiqueta)
+        self.aplicar_filtro(self.txt_busqueda.text())
+
     def _abrir_editar(self, fila: int, columna: int):
         """Doble clic en una fila: columna Código abre solo el SIAC;
         el resto abre la ventana de editar (HU-02)."""
@@ -1165,9 +1397,9 @@ class PanelControlWindow(QMainWindow):
     def _apply_style(self):
         self.setStyleSheet(f"""
             QMainWindow {{ background-color: {theme.AZUL_FONDO}; }}
-            QWidget#contenido {{ background-color: #f1f5f9; }}
+            QWidget#contenido {{ background-color: {theme.FONDO_TRABAJO}; }}
             QFrame#sidebar {{
-                background-color: {theme.AZUL_FONDO};
+                background-color: {theme.AZUL_SIDEBAR};
                 border: none;
             }}
             QLabel#marca {{
@@ -1176,16 +1408,17 @@ class PanelControlWindow(QMainWindow):
             }}
             QPushButton#item {{
                 color: {theme.TEXTO_SECUNDARIO}; font-size: 14px; font-weight: 600;
-                padding: 10px 18px; text-align: left;
-                background: transparent; border: none;
-                border-left: 3px solid transparent;
+                padding: 10px 18px; text-align: left; background: transparent; border: none;
+                border-left: 3px solid transparent; border-radius: 0px;
             }}
-            QPushButton#item:hover {{ color: {theme.TEXTO_PRINCIPAL}; }}
+            QPushButton#item:hover {{
+                color: {theme.TEXTO_PRINCIPAL}; background-color: rgba(255,255,255,0.04);
+            }}
             QPushButton#itemActivo {{
-                color: {theme.VERDE_LIMA}; font-size: 14px; font-weight: 700;
-                padding: 10px 18px; text-align: left;
-                background: transparent; border: none;
-                border-left: 3px solid {theme.VERDE_LIMA};
+                color: {theme.VERDE_INSTITUCIONAL}; font-size: 14px; font-weight: 700;
+                padding: 10px 18px; text-align: left; background-color: rgba(140,184,44,0.10);
+                border: none; border-left: 4px solid {theme.VERDE_INSTITUCIONAL};
+                border-radius: 0px;
             }}
             QPushButton#eliminar {{
                 background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_ERROR_CLARO};
@@ -1219,6 +1452,7 @@ class PanelControlWindow(QMainWindow):
             }}
             QLabel#etiquetaRespaldo {{ color: {theme.TEXTO_GRIS}; font-size: 13px; font-weight: 600; }}
             QLabel#tituloRespaldo {{ color: {theme.TEXTO_OSCURO}; font-size: 16px; font-weight: 800; }}
+            QLabel#paginadorTexto {{ color: {theme.TEXTO_OSCURO}; font-size: 12px; font-weight: 700; }}
             QComboBox#comboRespaldo {{
                 background-color: {theme.CAMPO_FONDO}; color: {theme.TEXTO_OSCURO};
                 border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px;
@@ -1228,6 +1462,11 @@ class PanelControlWindow(QMainWindow):
                 background-color: {theme.CAMPO_FONDO}; color: {theme.TEXTO_OSCURO};
                 selection-background-color: #ecfccb; selection-color: {theme.TEXTO_OSCURO};
                 border: 1px solid {theme.BORDE_SUAVE}; outline: 0;
+            }}
+            QLineEdit#txtBuscarRespaldo {{
+                background-color: {theme.CAMPO_FONDO}; color: {theme.TEXTO_OSCURO};
+                border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px 12px;
+                font-size: 13px;
             }}
             QPushButton#nuevo {{
                 background-color: {theme.VERDE_LIMA}; color: #0a1633;
@@ -1240,6 +1479,23 @@ class PanelControlWindow(QMainWindow):
                 font-size: 13px; font-weight: 700;
                 border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px 20px;
             }}
+            QPushButton#estadoFiltro {{
+                background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_OSCURO};
+                font-size: 13px; font-weight: 700;
+                border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px 20px;
+            }}
+            QPushButton#paginadorBtn {{
+                background-color: rgba(15, 30, 61, 0.08); color: {theme.TEXTO_OSCURO};
+                font-size: 12px; font-weight: 700; border: 1px solid {theme.BORDE_SUAVE};
+                border-radius: 8px; padding: 6px 10px; min-width: 34px;
+            }}
+            QPushButton#paginadorBtn:hover {{ background-color: rgba(15, 30, 61, 0.14); }}
+            QPushButton#paginadorBtn:disabled {{ background-color: rgba(15, 30, 61, 0.05); color: {theme.TEXTO_GRIS}; border-color: {theme.BORDE_SUAVE}; }}
+            QPushButton#paginadorBtnActivo {{
+                background-color: {theme.VERDE_LIMA}; color: #0a1633;
+                font-size: 12px; font-weight: 800; border: none; border-radius: 8px;
+                padding: 6px 10px; min-width: 34px;
+            }}
             QMenu#menuFiltrar {{
                 background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_OSCURO};
                 border: 1px solid {theme.BORDE_SUAVE}; padding: 6px;
@@ -1249,10 +1505,13 @@ class PanelControlWindow(QMainWindow):
             QMenu#menuFiltrar::separator {{ height: 1px; background: #e2e8f0; margin: 6px 10px; }}
             QMenu#menuFiltrar::indicator {{ width: 14px; height: 14px; }}
             QTableWidget {{
-                background-color: {theme.BLANCO_TARJETA}; color: {theme.TEXTO_OSCURO};
-                gridline-color: #e2e8f0; font-size: 12px;
-                border: 1px solid #e2e8f0; border-radius: 8px;
+                background-color: {theme.FONDO_TABLA}; color: {theme.TEXTO_OSCURO};
+                gridline-color: {theme.BORDES_TABLA}; font-size: 12px;
+                border: 1px solid {theme.BORDES_TABLA}; border-radius: 8px;
             }}
+            QTableWidget::item {{ background-color: {theme.FONDO_TABLA}; border: 0; }}
+            QTableWidget::item:hover {{ background-color: {theme.FONDO_HOVER}; }}
+            QTableWidget::item:selected {{ background-color: #EAF7D9; color: {theme.TEXTO_OSCURO}; }}
             QHeaderView::section {{
                 background-color: {theme.AZUL_FONDO}; color: {theme.TEXTO_PRINCIPAL};
                 font-weight: 700; padding: 6px; border: none;

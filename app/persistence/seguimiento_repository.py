@@ -88,16 +88,17 @@ def eliminar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> int:
 
 
 def listar_gestiones(becario_id: int, db_path: Path = DB_PATH) -> list[str]:
-    """Gestiones del becario de la primera a la más reciente (orden de registro)."""
+    """Gestiones del becario sin duplicados y en orden cronológico."""
     conn = get_connection(db_path)
     try:
         filas = conn.execute(
-            "SELECT gestion FROM seguimiento_becario WHERE becario_id = ? ORDER BY id",
+            "SELECT DISTINCT gestion FROM seguimiento_becario WHERE becario_id = ?",
             (becario_id,),
         ).fetchall()
     finally:
         conn.close()
-    return [fila["gestion"] for fila in filas]
+    gestiones = [fila["gestion"] for fila in filas if (fila["gestion"] or "").strip()]
+    return sorted(gestiones, key=lambda gestion: (int(gestion.split("-", 1)[1]), 1 if gestion.startswith("I-") else 2))
 
 
 def listar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> list[SeguimientoBecario]:

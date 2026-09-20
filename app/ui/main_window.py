@@ -42,12 +42,13 @@ class MainWindow(QMainWindow):
         layout.addWidget(btn_salir, alignment=Qt.AlignmentFlag.AlignCenter)
         self.setCentralWidget(central)
         self.setStyleSheet(f"""
-            QMainWindow, QWidget {{ background-color: {theme.AZUL_FONDO}; }}
-            QLabel {{ color: {theme.TEXTO_PRINCIPAL}; font-size: 14px; }}
+            QMainWindow, QWidget {{ background-color: {theme.FONDO_TRABAJO}; }}
+            QLabel {{ color: {theme.TEXTO_OSCURO}; font-size: 14px; }}
             QPushButton {{
                 background-color: {theme.VERDE_LIMA}; color: #0a1633;
                 font-weight: 700; border: none; border-radius: 8px; padding: 10px 24px;
             }}
+            QPushButton:hover {{ background-color: {theme.VERDE_LIMA_HOVER}; }}
         """)
 
     def _cerrar_sesion(self):

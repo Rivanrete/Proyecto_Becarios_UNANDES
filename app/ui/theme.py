@@ -1,25 +1,36 @@
-"""Paleta institucional (referencia visual 01_login.png).
+"""Paleta institucional UNANDES.
 
-Verde lima + azul oscuro. Solo estilo, sin lógica.
+Aporta la identidad corporativa: azul marino profundo, verde institucional
+para acentos y fondo claro para paneles y tablas.
 """
 
-AZUL_FONDO = "#0a1633"
-AZUL_TARJETA = "#101d42"
-AZUL_CAMPO = "#0c1530"
+AZUL_FONDO = "#07173D"
+AZUL_SIDEBAR = "#07173D"
+AZUL_TARJETA = "#0A1B44"
+AZUL_CAMPO = "#F4F6FA"
 AZUL_BORDE = "#24325e"
-VERDE_LIMA = "#8be000"
-VERDE_LIMA_HOVER = "#9df500"
-VERDE_TEXTO = "#8be000"
+VERDE_LIMA = "#8CB82C"
+VERDE_LIMA_HOVER = "#96C121"
+VERDE_INSTITUCIONAL = "#8CB82C"
+VERDE_TEXTO = "#8CB82C"
 TEXTO_PRINCIPAL = "#ffffff"
-TEXTO_SECUNDARIO = "#b9c2d8"
+TEXTO_SECUNDARIO = "#c9d6ee"
 TEXTO_ERROR = "#ff6b6b"
 
-# Paleta clara para la tarjeta de login en fondo blanco (contraste/legibilidad).
-BLANCO_TARJETA = "#ffffff"
+# Paleta clara para paneles, tabla y controles.
+BLANCO_TARJETA = "#FFFFFF"
+FONDO_TRABAJO = "#F4F6FA"
+FONDO_TABLA = "#FFFFFF"
+FONDO_HOVER = "#F0F4FC"
+BORDES_TABLA = "#E5E9F2"
 TEXTO_OSCURO = "#0f1e3d"
 TEXTO_GRIS = "#475569"
 TEXTO_GRIS_SUAVE = "#94a3b8"
-BORDE_SUAVE = "#cbd5e1"
-CAMPO_FONDO = "#ffffff"
+BORDE_SUAVE = "#D9E2EC"
+CAMPO_FONDO = "#F8FAFC"
+TEXTO_INPUT = "#0F172A"
+TEXTO_PLACEHOLDER = "#64748B"
+FONDO_INPUT_READONLY = "#F1F5F9"
+BORDE_INPUT = "#CBD5E1"
 VERDE_OSCURO = "#4d7c0a"
 TEXTO_ERROR_CLARO = "#dc2626"
