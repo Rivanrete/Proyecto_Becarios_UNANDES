@@ -187,9 +187,9 @@ class FichaBecarioWindow(DialogoBase):
     def _badge_menu(self, campo: str, valor_actual, padre) -> QLabel:
         """Badge clickeable: mismo desplegable de opciones que el panel."""
         if campo == "condicion":
-            # Solo informativa: estilo neutro en ambos valores.
-            etiqueta = self._badge(
-                _texto_opcion(campo, valor_actual), ESTILO_BADGE_NEUTRO, padre)
+            # Texto plano como los datos vecinos (sin cápsula amarilla);
+            # sigue abriendo el desplegable en modo Editar.
+            etiqueta = self._dato(_texto_opcion(campo, valor_actual), padre)
         else:
             etiqueta = self._badge(
                 _texto_opcion(campo, valor_actual),
@@ -267,7 +267,7 @@ class FichaBecarioWindow(DialogoBase):
         info["valor"] = opcion
         etiqueta.setText(_texto_opcion(campo, opcion))
         if campo == "condicion":
-            etiqueta.setStyleSheet(ESTILO_BADGE_NEUTRO)
+            etiqueta.setStyleSheet("")  # texto plano, sin cápsula
         else:
             etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if opcion else ESTILO_BADGE_ROJO)
         self.cambio_guardado.emit(seg.becario_id, campo, opcion)

@@ -124,6 +124,8 @@ TEXTO_SIN_RESULTADOS = "Ninguna coincidencia"
 
 # Índice de la columna Código en la tabla principal (doble clic = perfil SIAC).
 INDICE_COLUMNA_CODIGO = 4
+# Índice de la columna Condición (texto plano clickeable, abre su desplegable).
+INDICE_COLUMNA_CONDICION = 5
 URL_PERFIL_SIAC = "https://udelosandes.com/siac/estudiante/informacion_academica/{codigo}/218"
 
 
@@ -180,6 +182,10 @@ class PanelControlWindow(QMainWindow):
         self._filas_completas: list = []
         self._inactivos_completos: list = []
         self._menu_info: dict = {}
+        # Condición por fila visible: {fila: {becario_id, valor, gestion,
+        # completo}} (la columna es texto plano, no badge; el desplegable
+        # se abre con clic y el cursor cambia al pasar sobre ella).
+        self._info_condicion: dict = {}
         self._categoria_filtro: str | None = None
         self._solo_pendientes = False
         self._fecha_limite: str | None = None
@@ -298,6 +304,11 @@ class PanelControlWindow(QMainWindow):
         self.tabla.installEventFilter(self)
         # Doble clic abre el becario en modo edición (HU-02, CA-1).
         self.tabla.cellDoubleClicked.connect(self._abrir_editar)
+        # Clic simple en Condición abre su desplegable (texto plano, no badge).
+        self.tabla.cellClicked.connect(self._manejar_clic_celda)
+        # Cursor de mano al pasar sobre Condición (ya no parece botón).
+        self.tabla.viewport().setMouseTracking(True)
+        self.tabla.viewport().installEventFilter(self)
         layout_contenido.addWidget(self.tabla, 1)
 
         self._build_paginador(layout_contenido)
@@ -399,6 +410,7 @@ class PanelControlWindow(QMainWindow):
             self.tabla.setRowCount(0)
             self._ids_fila = []
             self._menu_info = {}
+            self._info_condicion = {}
             self._fila_sin_resultados()
             self._actualizar_paginador()
             return
@@ -412,6 +424,7 @@ class PanelControlWindow(QMainWindow):
         self.tabla.setRowCount(0)
         self._ids_fila = []
         self._menu_info = {}
+        self._info_condicion = {}
         for indice_local, fila in enumerate(pagina_actual, start=1):
             fila_real = self.tabla.rowCount()
             self.tabla.insertRow(fila_real)
@@ -422,9 +435,9 @@ class PanelControlWindow(QMainWindow):
             self._celda_texto(fila_real, 2, apellidos)
             self._celda_texto(fila_real, 3, nombres)
             self._celda_texto(fila_real, 4, codigo)
-            self._celda_badge_menu(fila_real, 5, becario_id, "condicion",
-                                     seg.condicion or "Nueva",
-                                     real.gestion if real is not None else None)
+            self._celda_condicion(
+                fila_real, becario_id, seg.condicion or "Nueva",
+                real.gestion if real is not None else None)
             self._celda_texto(fila_real, 6, gestion)
             self._celda_badge_menu(fila_real, 7, becario_id, "horas_becarias",
                                      seg.horas_becarias,
@@ -1018,6 +1031,81 @@ class PanelControlWindow(QMainWindow):
         self._pintar_badge(etiqueta, campo, valor_actual)
         self.tabla.setCellWidget(fila, columna, etiqueta)
 
+    def _celda_condicion(self, fila: int, becario_id: int,
+                           valor_actual: str, gestion: str | None):
+        """Condición como texto plano (igual que Código y Gestión).
+
+        Sin cápsula ni fondo propio: hereda el fondo de la fila (blanco o
+        resaltado de vencido) como las celdas vecinas. El clic abre el
+        desplegable y el tooltip conserva el valor completo.
+        """
+        completo = str(valor_actual or "Nueva")
+        item = QTableWidgetItem(self._texto_visible_badge(
+            INDICE_COLUMNA_CONDICION, completo, self.tabla.font()))
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        item.setToolTip(f"{completo} — Clic para cambiar")
+        self.tabla.setItem(fila, INDICE_COLUMNA_CONDICION, item)
+        self._info_condicion[fila] = {
+            "becario_id": becario_id, "valor": completo,
+            "gestion": gestion, "completo": completo,
+        }
+
+    def _manejar_clic_celda(self, fila: int, columna: int):
+        """Clic simple en Condición: abre su desplegable (otras: nada)."""
+        if columna != INDICE_COLUMNA_CONDICION:
+            return
+        if not 0 <= fila < len(self._ids_fila):
+            return
+        self._mostrar_menu_condicion(fila)
+
+    def _mostrar_menu_condicion(self, fila: int):
+        """Desplegable Nueva/Renovación; cerrar sin elegir no cambia nada."""
+        info = self._info_condicion.get(fila)
+        if info is None:
+            return
+        menu = QMenu(self)
+        menu.setObjectName("menuFiltrar")  # reutiliza el estilo del dropdown
+        for opcion in _opciones_campo("condicion"):
+            accion = menu.addAction(_texto_opcion("condicion", opcion))
+            accion.setCheckable(True)
+            accion.setChecked(opcion == info["valor"])
+            accion.triggered.connect(
+                lambda checked=False, o=opcion: self._elegir_condicion(fila, o)
+            )
+        menu.exec(QCursor.pos())
+
+    def _elegir_condicion(self, fila: int, opcion: str):
+        """Guarda la condición elegida y refleja el cambio sin recargar todo.
+
+        Misma vía rápida que los badges (caché + repintado en sitio);
+        cerrar el desplegable sin elegir no dispara esto y conserva el valor.
+        """
+        info = self._info_condicion.get(fila)
+        if info is None:
+            return
+        if opcion == info["valor"]:
+            return
+        if info.get("gestion") is None or info.get("gestion") == "—":
+            self.refrescar()  # caso raro sin seguimiento: recarga completa
+            return
+        try:
+            becario_service.actualizar_condicion(
+                info["becario_id"], info["gestion"], opcion)
+        except Exception as e:
+            mostrar_notificacion(self, f"No se pudo guardar el cambio: {e}", tipo="error")
+            return
+        if self._actualizar_cache_campo(info["becario_id"], "condicion", opcion):
+            info["valor"] = opcion
+            info["completo"] = opcion
+            item = self.tabla.item(fila, INDICE_COLUMNA_CONDICION)
+            if item is not None:
+                item.setText(self._texto_visible_badge(
+                    INDICE_COLUMNA_CONDICION, opcion, self.tabla.font()))
+                item.setToolTip(f"{opcion} — Clic para cambiar")
+            self._tras_cambio_flag(info["becario_id"])
+        else:
+            self.refrescar()
+
     def _texto_visible_badge(self, columna: int, completo: str, fuente) -> str:
         """Completo si cabe; si no, abreviatura fija; "…" solo al final."""
         disponible = max(20, self.tabla.columnWidth(columna) - MARGEN_BADGE_PX)
@@ -1045,6 +1133,12 @@ class PanelControlWindow(QMainWindow):
         for etiqueta, info in self._menu_info.items():
             etiqueta.setText(self._texto_visible_badge(
                 info.get("columna", 0), info.get("completo", ""), etiqueta.font()))
+        for fila, info in self._info_condicion.items():
+            item = self.tabla.item(fila, INDICE_COLUMNA_CONDICION)
+            if item is not None:
+                item.setText(self._texto_visible_badge(
+                    INDICE_COLUMNA_CONDICION, info.get("completo", ""),
+                    self.tabla.font()))
 
     def _aplicar_anchos_proporcionales(self) -> bool:
         """Fija anchos manejados por código para evitar cortes y bloquear el arrastre manual."""
@@ -1090,6 +1184,19 @@ class PanelControlWindow(QMainWindow):
         if obj is self.tabla and event.type() == QEvent.Type.Resize:
             # Diferido: aquí el viewport aún tiene el tamaño anterior.
             self._programar_reajuste_columnas()
+            return False
+        if (obj is self.tabla.viewport()
+                and event.type() == QEvent.Type.MouseMove):
+            # Mano solo sobre Condición (texto plano clickeable, ya sin
+            # aspecto de botón); el resto conserva la flecha normal.
+            posicion = event.position().toPoint()
+            indice = self.tabla.indexAt(posicion)
+            if (indice.isValid()
+                    and indice.column() == INDICE_COLUMNA_CONDICION
+                    and 0 <= indice.row() < len(self._ids_fila)):
+                self.tabla.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+            else:
+                self.tabla.viewport().setCursor(Qt.CursorShape.ArrowCursor)
             return False
         if (event.type() == QEvent.Type.MouseButtonRelease
                 and event.button() == Qt.MouseButton.LeftButton
@@ -1254,8 +1361,8 @@ class PanelControlWindow(QMainWindow):
             return None
 
     def _olvidar_badges_de_fila(self, fila_visible: int):
-        """Limpia el registro del menú de los badges de la fila eliminada."""
-        for columna in (5, 7, 8, 9, 10, 11):
+        """Limpia el registro del menú de los 5 badges de la fila eliminada."""
+        for columna in (7, 8, 9, 10, 11):
             insignia = self.tabla.cellWidget(fila_visible, columna)
             if insignia in self._menu_info:
                 del self._menu_info[insignia]
@@ -1394,6 +1501,7 @@ class PanelControlWindow(QMainWindow):
 
     def _abrir_editar(self, fila: int, columna: int):
         """Doble clic en una fila: columna Código abre solo el SIAC;
+        Condición no hace nada (su clic simple ya abre el desplegable);
         el resto abre la ventana de editar (HU-02)."""
         if not 0 <= fila < len(self._ids_fila):
             return
@@ -1401,6 +1509,8 @@ class PanelControlWindow(QMainWindow):
             item = self.tabla.item(fila, INDICE_COLUMNA_CODIGO)
             if item is not None:
                 abrir_perfil_siac(item.text())
+            return
+        if columna == INDICE_COLUMNA_CONDICION:
             return
         self.becario_editar_solicitado.emit(self._ids_fila[fila])
 
