@@ -124,7 +124,12 @@ class FichaBecarioWindow(DialogoBase):
         layout.addWidget(self._seccion("Clasificación"))
         form_clase = QFormLayout()
         form_clase.setSpacing(8)
-        form_clase.addRow("Categoría:", self._dato(becario.tipo_beca or "—", card))
+        categoria = self._dato(becario.tipo_beca or "—", card)
+        # Rótulos oficiales largos: envuelve dentro de la tarjeta (sin
+        # ensancharla) y muestra el nombre completo en el tooltip.
+        categoria.setWordWrap(True)
+        categoria.setToolTip(becario.tipo_beca or "—")
+        form_clase.addRow("Categoría:", categoria)
         form_clase.addRow("Estado:", self._badge(becario.estado, estilo_estado(becario.estado), card))
         layout.addLayout(form_clase)
 

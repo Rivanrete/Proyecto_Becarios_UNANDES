@@ -88,9 +88,11 @@ def mapear_categoria(tipo_beca: str, estado: str,
     if not carta_renovacion:
         return None
     tipo = _normalizar_tipo(tipo_beca)
-    if tipo.startswith("excelencia"):
+    # Los rótulos oficiales empiezan con "Beca "/"Plan Beca ", por eso se
+    # busca por contenido y no por prefijo (el criterio por tipo no cambia).
+    if "excelencia" in tipo:
         return "excelencia_renov"
-    if tipo.startswith("economica"):
+    if "economica" in tipo and "social" in tipo:
         return "economica_renov"
     if "convenio" in tipo:
         return "convenio_renov"

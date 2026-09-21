@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS carreras (
 CREATE TABLE IF NOT EXISTS tipos_beca (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre TEXT NOT NULL UNIQUE,
-    activo INTEGER NOT NULL DEFAULT 1
+    activo INTEGER NOT NULL DEFAULT 1,
+    orden INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS configuracion (
     clave TEXT PRIMARY KEY,
@@ -127,11 +128,16 @@ def init_db(db_path: Path = DB_PATH) -> None:
         completar_tipos_vacios,
         distribuir_estados_ejemplo,
     )
-    from app.services.catalogo_service import asegurar_catalogos, migrar_catalogos_v2
+    from app.services.catalogo_service import (
+        asegurar_catalogos,
+        migrar_catalogos_v2,
+        migrar_tipos_beca_oficiales,
+    )
 
     asegurar_credencial_unica(db_path=db_path)
     asegurar_catalogos(db_path=db_path)
     migrar_catalogos_v2(db_path=db_path)
+    migrar_tipos_beca_oficiales(db_path=db_path)
     asegurar_datos_ejemplo(db_path=db_path)
     completar_tipos_vacios(db_path=db_path)
     distribuir_estados_ejemplo(db_path=db_path)

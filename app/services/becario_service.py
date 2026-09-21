@@ -385,12 +385,11 @@ def historial_gestiones(becario_id: int, db_path: Path = DB_PATH) -> list[str]:
 
 
 def contar_becarios_por_categoria(db_path: Path = DB_PATH) -> list[tuple[str, int]]:
-    """HU-06: [(categoria, cantidad)] para cada tipo del catálogo, con 0 incluidos."""
+    """HU-06: [(categoria, cantidad)] en el orden oficial del catálogo, con 0 incluidos."""
+    from app.services.catalogo_service import TIPOS_BECA_OFICIALES
+
     conteo = becario_repository.contar_por_tipo_beca(db_path)
-    return [
-        (t.nombre, conteo.get(t.nombre, 0))
-        for t in tipo_beca_repository.listar_todos(db_path)
-    ]
+    return [(nombre, conteo.get(nombre, 0)) for nombre in TIPOS_BECA_OFICIALES]
 
 
 # ---------------------------------------------------------------------------
@@ -468,27 +467,27 @@ def incumple_requisitos(estado: str, seg, fecha_limite: str | None,
 
 
 # ---------------------------------------------------------------------------
-# Datos de ejemplo para desarrollo (seed idempotente, 6 carreras × 2-3,
-# repartidos también entre los 6 tipos de beca para probar el filtro).
+# Datos de ejemplo para desarrollo (seed idempotente; cubre los 10 tipos
+# oficiales para probar el filtro por categoría).
 # Sirven para probar el listado y el futuro filtro por carrera.
 # ---------------------------------------------------------------------------
 _DATOS_EJEMPLO = [
     # (nombres, apellidos, ci, codigo, carrera, contacto, tipo, estado, %ant, horas, mat, carpeta, carta, ingreso)
-    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Excelencia Académica", "Activo", "100%", True, True, True, True, "I-2024"),
-    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Económica Social", "Activo", "0%", False, False, False, False, "II-2024"),
-    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Convenio Interinstitucional", "Activo", "50%", True, False, False, True, "I-2025"),
-    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Personal Administrativo", "Activo", "50%", True, True, False, True, "II-2025"),
-    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Honorífica Directorio", "Activo", "100%", True, True, True, False, "I-2026"),
-    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Social - Ministerio de Educación", "En renovación", "0%", False, True, False, False, "II-2026"),
-    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Excelencia Académica", "En renovación", "100%", False, True, False, False, "I-2024"),
-    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Económica Social", "Activo", "50%", True, True, True, True, "II-2024"),
-    ("Miguel", "Huanca Copa", "7452309", "25034", "LGYH", "71234509", "Convenio Interinstitucional", "Activo", "50%", True, False, True, True, "I-2025"),
-    ("Paola", "Ríos Fernández", "6981342", "25108", "LGYH", "71234510", "Personal Administrativo", "Activo", "100%", True, True, True, True, "II-2025"),
-    ("Luis", "Copa Ticona", "8234567", "25241", "LGYH", "71234511", "Honorífica Directorio", "Baja/Inactivo", "0%", False, False, False, True, "I-2026"),
-    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Social - Ministerio de Educación", "Activo", "100%", True, True, False, True, "II-2026"),
-    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Excelencia Académica", "Activo", "50%", False, True, False, False, "I-2024"),
-    ("Carolina", "Paredes Flores", "7981234", "27045", "CPU", "71234514", "Económica Social", "Activo", "100%", True, True, True, True, "I-2025"),
-    ("Javier", "Ticona Ríos", "6456789", "27190", "CPU", "71234515", "Convenio Interinstitucional", "En renovación", "0%", False, False, False, False, "II-2025"),
+    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Beca Excelencia Académica", "Activo", "100%", True, True, True, True, "I-2024"),
+    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Beca Económica Social Renovación", "Activo", "0%", False, False, False, False, "II-2024"),
+    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Beca Económica Social Nuevas", "Activo", "50%", True, False, False, True, "I-2025"),
+    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Beca Personal Administrativo", "Activo", "50%", True, True, False, True, "II-2025"),
+    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Beca Honorífica Directorio", "Activo", "100%", True, True, True, False, "I-2026"),
+    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Beca Social Ministerio de Educación Renovación", "En renovación", "0%", False, True, False, False, "II-2026"),
+    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Beca Excelencia Académica", "En renovación", "100%", False, True, False, False, "I-2024"),
+    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Beca Convenio Interinstitucional Renovación", "Activo", "50%", True, True, True, True, "II-2024"),
+    ("Miguel", "Huanca Copa", "7452309", "25034", "LGYH", "71234509", "Beca Convenio Interinstitucional Nuevas", "Activo", "50%", True, False, True, True, "I-2025"),
+    ("Paola", "Ríos Fernández", "6981342", "25108", "LGYH", "71234510", "Beca Personal Administrativo", "Activo", "100%", True, True, True, True, "II-2025"),
+    ("Luis", "Copa Ticona", "8234567", "25241", "LGYH", "71234511", "Beca Honorífica Directorio", "Baja/Inactivo", "0%", False, False, False, True, "I-2026"),
+    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Beca Social Ministerio de Educación Renovación", "Activo", "100%", True, True, False, True, "II-2026"),
+    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Plan Beca Marketing Renovación", "Activo", "50%", False, True, False, False, "I-2024"),
+    ("Carolina", "Paredes Flores", "7981234", "27045", "CPU", "71234514", "Plan Beca Marketing Nuevas", "Activo", "100%", True, True, True, True, "I-2025"),
+    ("Javier", "Ticona Ríos", "6456789", "27190", "CPU", "71234515", "Beca Económica Social Renovación", "En renovación", "0%", False, False, False, False, "II-2025"),
 ]
 
 
@@ -515,10 +514,11 @@ def asegurar_datos_ejemplo(db_path: Path = DB_PATH) -> int:
 
 
 def completar_tipos_vacios(db_path: Path = DB_PATH) -> int:
-    """Backfill puntual HU-06: becarios pre-HU-03 con tipo vacío ('').
+    """Backfill puntual: becarios con tipo vacío ('').
 
-    Les asigna tipos del catálogo en reparto rotativo por orden de id.
-    No toca a los que ya tienen tipo. Idempotente (0 si no hay vacíos).
+    Les asigna tipos del catálogo oficial en reparto rotativo por orden
+    de id (orden oficial, no alfabético). No toca a los que ya tienen
+    tipo. Idempotente (0 si no hay vacíos).
     """
     tipos = [t.nombre for t in tipo_beca_repository.listar_activos(db_path)]
     if not tipos:

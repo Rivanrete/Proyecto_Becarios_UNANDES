@@ -1,12 +1,12 @@
 """Seed y migración de catálogos (carreras y tipos de beca).
 
-NOTA: las listas vigentes son la mejor interpretación cruzando el Excel
-real con el sitio oficial, aún NO reconfirmadas por la encargada.
-Revisar antes de la entrega final.
-
-Asegurar siembra tablas vacías; migrar_catalogos_v2 reemplaza una sola
-vez los catálogos viejos (detección por marcadores viejos).
+Fuente única del catálogo de becas: TIPOS_BECA_OFICIALES (10 rótulos
+reales del archivador de Bienestar Estudiantil, en este orden exacto).
+Todo lo demás (combos, filtros, contador, validación, backfill) lee de
+la tabla tipos_beca, que se siembra/migra desde esa lista.
 """
+
+import unicodedata
 from pathlib import Path
 
 from app.persistence import carrera_repository, tipo_beca_repository
@@ -32,7 +32,30 @@ CARRERAS_INICIALES = [
     ("ODO", "Odontología"),
 ]
 
-TIPOS_BECA_INICIALES = [
+TIPOS_BECA_OFICIALES = [
+    "Beca Excelencia Académica",
+    "Beca Económica Social Renovación",
+    "Beca Económica Social Nuevas",
+    "Beca Convenio Interinstitucional Renovación",
+    "Beca Convenio Interinstitucional Nuevas",
+    "Beca Honorífica Directorio",
+    "Beca Personal Administrativo",
+    "Beca Social Ministerio de Educación Renovación",
+    "Plan Beca Marketing Renovación",
+    "Plan Beca Marketing Nuevas",
+]
+
+# Compatibilidad: el nombre anterior apuntaba a la lista de 7 tipos
+# agrupados; ahora es alias de la lista oficial (misma fuente única).
+TIPOS_BECA_INICIALES = list(TIPOS_BECA_OFICIALES)
+
+# Marcadores de los catálogos viejos (si aparecen, hay que migrar una vez).
+_MARCADORES_VIEJOS_CARRERAS = {"GAS", "CON"}
+_MARCADORES_VIEJOS_TIPOS = {"Excelencia", "Convenio", "Directorio",
+                            "Plantel Administrativo", "Ministerial"}
+
+# Valores agrupados anteriores (lista de 7) que la migración oficial reemplaza.
+_TIPOS_AGRUPADOS_ANTERIORES = {
     "Excelencia Académica",
     "Económica Social",
     "Convenio Interinstitucional",
@@ -40,12 +63,141 @@ TIPOS_BECA_INICIALES = [
     "Personal Administrativo",
     "Social - Ministerio de Educación",
     "Plan Beca MKT",
-]
+}
 
-# Marcadores de los catálogos viejos (si aparecen, hay que migrar una vez).
-_MARCADORES_VIEJOS_CARRERAS = {"GAS", "CON"}
-_MARCADORES_VIEJOS_TIPOS = {"Excelencia", "Convenio", "Directorio",
-                            "Plantel Administrativo", "Ministerial"}
+
+def _normalizar_tipo(valor: str) -> str:
+    """Minúsculas sin tildes para comparar tipos viejos con tolerancia."""
+    base = unicodedata.normalize("NFKD", valor or "")
+    return "".join(c for c in base if not unicodedata.combining(c)).lower().strip()
+
+
+def _destino_mas_cercano(valor_viejo: str) -> str:
+    """Mapea un valor no reconocido al oficial más cercano (sin inventar).
+
+    Se usa solo para valores fuera de la lista anterior conocida; el
+    reporte final debe anotar cada caso (ver migrar_tipos_beca_oficiales).
+    """
+    tipo = _normalizar_tipo(valor_viejo)
+    if "minister" in tipo or "educacion" in tipo:
+        return "Beca Social Ministerio de Educación Renovación"
+    if "excelencia" in tipo:
+        return "Beca Excelencia Académica"
+    if "honor" in tipo or "directorio" in tipo:
+        return "Beca Honorífica Directorio"
+    if "personal" in tipo or "administrativo" in tipo or "plantel" in tipo:
+        return "Beca Personal Administrativo"
+    if "convenio" in tipo:
+        return "Beca Convenio Interinstitucional Renovación"
+    if "marketing" in tipo or "mkt" in tipo or "mercad" in tipo:
+        return "Plan Beca Marketing Renovación"
+    if "econom" in tipo or "social" in tipo:
+        return "Beca Económica Social Renovación"
+    return "Beca Económica Social Renovación"
+
+
+def _reparto_renovacion_nuevas(valor_viejo: str, posicion: int) -> str | None:
+    """Variante Renovación/Nuevas para los 3 tipos agrupados que se parten.
+
+    `posicion` es el orden del becario dentro de su grupo viejo (0, 1, 2…):
+    pares -> Renovación, impares -> Nuevas. Así ambas variantes quedan con
+    datos para probar los filtros. Retorna None si no es partible.
+    """
+    tipo = _normalizar_tipo(valor_viejo)
+    if "economica" in tipo and "social" in tipo and "ministerio" not in tipo \
+            and "educacion" not in tipo:
+        base = "Beca Económica Social"
+    elif "convenio" in tipo:
+        base = "Beca Convenio Interinstitucional"
+    elif "mkt" in tipo or "marketing" in tipo or "plan beca" in tipo:
+        base = "Plan Beca Marketing"
+    else:
+        return None
+    variante = "Renovación" if posicion % 2 == 0 else "Nuevas"
+    return f"{base} {variante}"
+
+
+_MAPEO_DIRECTO_OFICIAL = {
+    "Excelencia Académica": "Beca Excelencia Académica",
+    "Honorífica Directorio": "Beca Honorífica Directorio",
+    "Personal Administrativo": "Beca Personal Administrativo",
+    "Social - Ministerio de Educación":
+        "Beca Social Ministerio de Educación Renovación",
+}
+
+
+def migrar_tipos_beca_oficiales(db_path: Path = DB_PATH) -> dict:
+    """Migra catálogo y becarios a los 10 tipos oficiales. Idempotente.
+
+    - Catálogo: si tipos_beca ya contiene exactamente los 10 oficiales,
+      solo repara el orden y retorna sin borrar nada. Si no, reemplaza
+      el contenido por los 10 oficiales en orden.
+    - Becarios: mapea cada tipo_beca viejo al nuevo (ver reglas abajo);
+      los que ya están en valores oficiales no se tocan. Correr dos
+      veces no cambia nada más.
+    - Respaldos (respaldo_becario): NO se tocan (históricos intactos).
+
+    Retorna {"tipos_reemplazados", "becarios_actualizados",
+    "no_reconocidos": [(id, valor_viejo, destino)]}.
+    """
+    from app.persistence.database import get_connection
+
+    tipo_beca_repository.asegurar_columna_orden(db_path)
+    conn = get_connection(db_path)
+    try:
+        tipos_actuales = [r[0] for r in
+                          conn.execute("SELECT nombre FROM tipos_beca").fetchall()]
+        filas_becarios = conn.execute(
+            "SELECT id, tipo_beca FROM becario ORDER BY id").fetchall()
+    finally:
+        conn.close()
+
+    tipos_reemplazados = 0
+    if set(tipos_actuales) != set(TIPOS_BECA_OFICIALES):
+        conn = get_connection(db_path)
+        try:
+            conn.execute("DELETE FROM tipos_beca")
+            conn.commit()
+        finally:
+            conn.close()
+        for posicion, nombre in enumerate(TIPOS_BECA_OFICIALES):
+            tipo_beca_repository.crear(nombre, db_path, orden=posicion)
+        tipos_reemplazados = len(TIPOS_BECA_OFICIALES)
+    tipo_beca_repository.reparar_orden(db_path, TIPOS_BECA_OFICIALES)
+
+    oficiales = set(TIPOS_BECA_OFICIALES)
+    contadores_reparto: dict[str, int] = {}
+    becarios_actualizados = 0
+    no_reconocidos: list[tuple] = []
+    for fila in filas_becarios:
+        becario_id = int(fila[0])
+        valor = (fila[1] or "").strip()
+        if valor in oficiales:
+            continue
+        if not valor:
+            destino = _destino_mas_cercano(valor)
+            no_reconocidos.append((becario_id, valor, destino))
+        elif valor in _MAPEO_DIRECTO_OFICIAL:
+            destino = _MAPEO_DIRECTO_OFICIAL[valor]
+        elif valor in _TIPOS_AGRUPADOS_ANTERIORES:
+            posicion = contadores_reparto.get(valor, 0)
+            contadores_reparto[valor] = posicion + 1
+            destino = _reparto_renovacion_nuevas(valor, posicion) or \
+                _destino_mas_cercano(valor)
+        else:
+            destino = _destino_mas_cercano(valor)
+            no_reconocidos.append((becario_id, valor, destino))
+        conn = get_connection(db_path)
+        try:
+            conn.execute("UPDATE becario SET tipo_beca = ? WHERE id = ?",
+                         (destino, becario_id))
+            conn.commit()
+        finally:
+            conn.close()
+        becarios_actualizados += 1
+    return {"tipos_reemplazados": tipos_reemplazados,
+            "becarios_actualizados": becarios_actualizados,
+            "no_reconocidos": no_reconocidos}
 
 
 def asegurar_catalogos(db_path: Path = DB_PATH) -> tuple[int, int]:
