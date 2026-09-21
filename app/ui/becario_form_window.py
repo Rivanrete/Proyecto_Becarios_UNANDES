@@ -31,77 +31,6 @@ from app.services import becario_service
 from app.services.becario_service import BecarioDuplicadoError
 from app.ui import theme
 from app.ui.dialogo_base import DialogoBase
-from app.ui.overlay import ejecutar_con_overlay
-
-
-TEXTO_FOTO_EN_DESARROLLO = (
-    "Función en desarrollo. Próximamente podrás cargar "
-    "los datos del estudiante desde una foto de la solicitud."
-)
-
-
-class DialogoFuncionEnDesarrollo(DialogoBase):
-    """Aviso simple con X, clic fuera (overlay) y botón Entendido."""
-
-    def __init__(self, parent=None, mensaje: str = ""):
-        super().__init__(parent, modal=True)
-        self.setWindowTitle("UNANDES • Aviso")
-        self._build_ui(mensaje)
-        self._apply_style()
-
-    def _build_ui(self, mensaje: str):
-        root = QVBoxLayout(self)
-        root.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        root.setContentsMargins(24, 24, 24, 24)
-
-        card = QFrame(self)
-        card.setObjectName("cardMensaje")
-        card.setMinimumWidth(320)
-        card.setMaximumWidth(440)
-        layout = QVBoxLayout(card)
-        layout.setSpacing(14)
-        layout.setContentsMargins(32, 28, 32, 28)
-
-        encabezado = QHBoxLayout()
-        encabezado.addStretch(1)
-        encabezado.addWidget(self.crear_boton_x(card))
-        layout.addLayout(encabezado)
-
-        texto = QLabel(mensaje, card)
-        texto.setObjectName("textoMensaje")
-        texto.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        texto.setWordWrap(True)
-        layout.addWidget(texto)
-
-        self.btn_entendido = QPushButton("Entendido", card)
-        self.btn_entendido.setObjectName("aceptarExito")
-        self.btn_entendido.setDefault(True)
-        self.btn_entendido.clicked.connect(self.accept)
-        layout.addWidget(self.btn_entendido)
-
-        root.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
-
-    def _apply_style(self):
-        self.setStyleSheet(f"""
-            QDialog {{ background: transparent; }}
-            QFrame#cardMensaje {{
-                background-color: {theme.AZUL_TARJETA};
-                border: 1px solid {theme.AZUL_BORDE};
-                border-radius: 16px;
-            }}
-            QToolButton#cerrar {{
-                color: {theme.TEXTO_SECUNDARIO}; font-size: 14px; font-weight: 700;
-                background: transparent; border: none; padding: 4px 8px;
-            }}
-            QToolButton#cerrar:hover {{ color: {theme.TEXTO_ERROR}; }}
-            QLabel#textoMensaje {{ color: {theme.TEXTO_PRINCIPAL}; font-size: 14px; font-weight: 600; }}
-            QPushButton#aceptarExito {{
-                background-color: {theme.VERDE_LIMA}; color: #0a1633;
-                font-size: 14px; font-weight: 800; border: none;
-                border-radius: 8px; padding: 11px;
-            }}
-            QPushButton#aceptarExito:hover {{ background-color: {theme.VERDE_LIMA_HOVER}; }}
-        """)
 
 
 class BecarioFormWindow(DialogoBase):
@@ -251,17 +180,6 @@ class BecarioFormWindow(DialogoBase):
         fila_botones.addWidget(self.btn_cancelar)
         layout.addLayout(fila_botones)
 
-        fila_foto = QHBoxLayout()
-        fila_foto.addStretch(1)
-        self.btn_foto = QPushButton("Cargar datos desde foto", card)
-        self.btn_foto.setObjectName("foto")
-        self.btn_foto.setToolTip("Próximamente: cargar los datos desde una foto")
-        self.btn_foto.clicked.connect(self.al_pulsar_cargar_desde_foto)
-        fila_foto.addWidget(self.btn_foto)
-        fila_foto.addStretch(1)
-        layout.addLayout(fila_foto)
-        self.btn_foto.setVisible(self.becario_id is None)
-
         root.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
         self.txt_nombres.setFocus()
 
@@ -356,11 +274,6 @@ class BecarioFormWindow(DialogoBase):
             self._actualizar_estado_formulario()
             return
         self.reject()
-
-    def al_pulsar_cargar_desde_foto(self):
-        """Muestra el aviso (la carga real desde foto se conecta aquí después)."""
-        dialogo = DialogoFuncionEnDesarrollo(self, mensaje=TEXTO_FOTO_EN_DESARROLLO)
-        ejecutar_con_overlay(self.parentWidget() or self, dialogo)
 
     def _aplicar_mayuscula_inicial(self, campo: QLineEdit):
         """Normaliza el campo al salir de él (se ve el resultado de inmediato)."""
@@ -497,11 +410,6 @@ class BecarioFormWindow(DialogoBase):
                 background-color: transparent; color: {theme.TEXTO_PRINCIPAL};
                 font-size: 13px; font-weight: 700;
                 border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px; padding: 10px;
-            }}
-            QPushButton#foto {{
-                background-color: transparent; color: {theme.TEXTO_SECUNDARIO};
-                font-size: 12px; font-weight: 600;
-                border: 1px solid {theme.AZUL_BORDE}; border-radius: 8px; padding: 9px 16px;
             }}
             QPushButton#editar {{
                 background-color: {theme.AZUL_BORDE}; color: {theme.TEXTO_PRINCIPAL};
