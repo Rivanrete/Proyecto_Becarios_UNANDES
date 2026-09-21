@@ -1504,7 +1504,6 @@ class PanelControlWindow(QMainWindow):
                 gridline-color: {theme.BORDES_TABLA}; font-size: 12px;
                 border: 1px solid {theme.BORDES_TABLA}; border-radius: 8px;
             }}
-            QTableWidget::item {{ background-color: {theme.FONDO_TABLA}; border: 0; }}
             QTableWidget::item:hover {{ background-color: {theme.FONDO_HOVER}; }}
             QTableWidget::item:selected {{ background-color: #EAF7D9; color: {theme.TEXTO_OSCURO}; }}
             QHeaderView::section {{
