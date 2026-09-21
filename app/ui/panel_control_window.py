@@ -54,7 +54,7 @@ COLUMNAS = [
     "Apellidos",
     "Nombres",
     "Código",
-    "%\nAnterior",
+    "Nueva /\nRenovación",
     "Gestión",
     "Horas Becarias",
     "Materias en Orden",
@@ -63,11 +63,12 @@ COLUMNAS = [
     "Estado",
 ]
 
-# Abreviaturas fijas (antes que "…") para los dos badges largos.
-_ABREVIATURAS_FIJAS = {"No cumplió": "No cump.", "En renovación": "En renov."}
+# Abreviaturas fijas (antes que "…") para los badges largos.
+_ABREVIATURAS_FIJAS = {"No cumplió": "No cump.", "En renovación": "En renov.",
+                       "Renovación": "Renov."}
 
 # Variante corta de encabezado (de beymar) cuando la columna queda angosta.
-_ABREVIATURAS_ENCABEZADO = {9: "C. C.", 10: "C. de R."}
+_ABREVIATURAS_ENCABEZADO = {5: "N. / R.", 9: "C. C.", 10: "C. de R."}
 
 # Margen que se reserva al abreviar badges (acolchado del estilo + aire).
 MARGEN_BADGE_PX = 26
@@ -96,6 +97,8 @@ def _opciones_campo(campo: str) -> list:
     """Opciones válidas del desplegable: coinciden con lo que usa el sistema."""
     if campo == "estado":
         return list(becario_service.ESTADOS_BECARIO)
+    if campo == "condicion":
+        return list(becario_service.CONDICIONES_SEGUIMIENTO)
     return [True, False]
 
 
@@ -103,7 +106,7 @@ def _texto_opcion(campo: str, valor) -> str:
     """Etiqueta visible de cada opción (misma que ya mostraban los badges)."""
     if campo == "horas_becarias":
         return "Cumplió" if valor else "No cumplió"
-    if campo == "estado":
+    if campo in ("estado", "condicion"):
         return str(valor)
     return "Sí" if valor else "No"
 
@@ -111,6 +114,9 @@ def _texto_opcion(campo: str, valor) -> str:
 def _estilo_opcion(campo: str, valor) -> str:
     if campo == "estado":
         return estilo_estado(valor)
+    if campo == "condicion":
+        # Solo informativa (no influye en colores de fila ni vencidos).
+        return ESTILO_BADGE_NEUTRO
     return ESTILO_BADGE_VERDE if valor else ESTILO_BADGE_ROJO
 
 TEXTO_BUSQUEDA = "Buscar por código Ej: 23718 o por nombre Beymar Condori Quispe"
@@ -128,7 +134,7 @@ def abrir_perfil_siac(codigo: str):
 COLUMNAS_INACTIVOS = ["N.", "Apellidos", "Nombres", "CI", "Código", "Carrera", "", ""]
 
 COLUMNAS_RESPALDO = ["N.", "Carrera", "Apellidos", "Nombres", "Código",
-                     "% Anterior", "Gestión", "Horas Becarias", "Materias en Orden",
+                     "Nueva / Renovación", "Gestión", "Horas Becarias", "Materias en Orden",
                      "C. C.", "C. de R.",
                      "Estado"]
 
@@ -416,7 +422,9 @@ class PanelControlWindow(QMainWindow):
             self._celda_texto(fila_real, 2, apellidos)
             self._celda_texto(fila_real, 3, nombres)
             self._celda_texto(fila_real, 4, codigo)
-            self._celda_texto(fila_real, 5, seg.porcentaje_anterior)
+            self._celda_badge_menu(fila_real, 5, becario_id, "condicion",
+                                     seg.condicion or "Nueva",
+                                     real.gestion if real is not None else None)
             self._celda_texto(fila_real, 6, gestion)
             self._celda_badge_menu(fila_real, 7, becario_id, "horas_becarias",
                                      seg.horas_becarias,
@@ -615,7 +623,7 @@ class PanelControlWindow(QMainWindow):
             self.tabla_respaldos.insertRow(fila)
             for columna, valor in enumerate(
                     [str(i), r.carrera, r.apellidos, r.nombres, r.codigo_estudiante,
-                      r.porcentaje_anterior, r.gestion_ingreso or "—"]):
+                      r.condicion or "—", r.gestion_ingreso or "—"]):
                 item = QTableWidgetItem(valor)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.tabla_respaldos.setItem(fila, columna, item)
@@ -1134,6 +1142,8 @@ class PanelControlWindow(QMainWindow):
                 becario_service.actualizar_carpeta_cancelada(bid, info["gestion"], opcion)
             elif campo == "carta_renovacion":
                 becario_service.actualizar_carta_renovacion(bid, info["gestion"], opcion)
+            elif campo == "condicion":
+                becario_service.actualizar_condicion(bid, info["gestion"], opcion)
             else:
                 becario_service.actualizar_estado(bid, opcion)
         except Exception as e:
@@ -1162,24 +1172,29 @@ class PanelControlWindow(QMainWindow):
             if fila[0] == becario_id:
                 for seg in (fila[5], fila[7]):
                     if seg is not None:
-                        setattr(seg, campo, bool(nuevo_valor))
+                        # La condición es texto (Nueva/Renovación), no booleano.
+                        setattr(seg, campo, nuevo_valor if campo == "condicion"
+                                else bool(nuevo_valor))
                 return True
         return False
 
-    def reflejar_cambio_externo(self, becario_id: int, campo: str, nuevo_valor: bool):
+    def reflejar_cambio_externo(self, becario_id: int, campo: str, nuevo_valor):
         """Refleja un cambio guardado desde la ficha (misma vía rápida, sin recargar).
 
-        Solo los 4 campos de seguimiento llegan aquí (la ficha no edita
-        estado); inactivos y respaldos no dependen de ellos.
+        Llegan los 4 campos de seguimiento, el estado no (la ficha no lo
+        edita) y la condición (Nueva/Renovación, también texto); inactivos
+        y respaldos no dependen de ellos.
         """
         if campo not in ("horas_becarias", "materias_en_orden",
-                         "carpeta_cancelada", "carta_renovacion"):
+                         "carpeta_cancelada", "carta_renovacion", "condicion"):
+            return
+        if campo == "condicion" and nuevo_valor not in ("Nueva", "Renovación"):
             return
         if not self._actualizar_cache_campo(becario_id, campo, nuevo_valor):
             return
         for etiqueta, info in self._menu_info.items():
             if info.get("becario_id") == becario_id and info.get("campo") == campo:
-                self._pintar_badge(etiqueta, campo, bool(nuevo_valor))
+                self._pintar_badge(etiqueta, campo, nuevo_valor)
                 break
         self._tras_cambio_flag(becario_id)
 
@@ -1239,8 +1254,8 @@ class PanelControlWindow(QMainWindow):
             return None
 
     def _olvidar_badges_de_fila(self, fila_visible: int):
-        """Limpia el registro del menú de los 5 badges de la fila eliminada."""
-        for columna in (7, 8, 9, 10, 11):
+        """Limpia el registro del menú de los badges de la fila eliminada."""
+        for columna in (5, 7, 8, 9, 10, 11):
             insignia = self.tabla.cellWidget(fila_visible, columna)
             if insignia in self._menu_info:
                 del self._menu_info[insignia]

@@ -1,9 +1,10 @@
 """Entidad SeguimientoBecario — HU-05/HU-08 (tabla creada en init_db).
 
 Representa el seguimiento de UN becario en UNA gestión académica
-(porcentajes, horas becarias, materias, carpeta y carta). Los datos son
-por gestión/período, NO fijos del becario, por eso vive en tabla aparte
-vinculada por becario_id en vez de columnas en Becario (HU-02).
+(porcentajes, condición Nueva/Renovación, horas becarias, materias,
+carpeta y carta). Los datos son por gestión/período, NO fijos del
+becario, por eso vive en tabla aparte vinculada por becario_id en vez
+de columnas en Becario (HU-02).
 
 SQL aplicado por app/persistence/database.py:
 
@@ -13,6 +14,7 @@ SQL aplicado por app/persistence/database.py:
         gestion TEXT NOT NULL,
         porcentaje_anterior TEXT NOT NULL DEFAULT '0%',
         porcentaje_gestion TEXT NOT NULL DEFAULT '0%',
+        condicion TEXT NOT NULL DEFAULT '',
         horas_becarias INTEGER NOT NULL DEFAULT 0,
         materias_en_orden INTEGER NOT NULL DEFAULT 0,
         carpeta_cancelada INTEGER NOT NULL DEFAULT 0,
@@ -35,6 +37,7 @@ class SeguimientoBecario:
     gestion: str
     porcentaje_anterior: str = "0%"
     porcentaje_gestion: str = "0%"
+    condicion: str = "Nueva"
     horas_becarias: bool = False
     materias_en_orden: bool = False
     carpeta_cancelada: bool = False

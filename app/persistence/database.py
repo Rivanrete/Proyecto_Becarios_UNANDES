@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS seguimiento_becario (
     gestion TEXT NOT NULL,
     porcentaje_anterior TEXT NOT NULL DEFAULT '0%',
     porcentaje_gestion TEXT NOT NULL DEFAULT '0%',
+    condicion TEXT NOT NULL DEFAULT '',
     horas_becarias INTEGER NOT NULL DEFAULT 0,
     materias_en_orden INTEGER NOT NULL DEFAULT 0,
     carpeta_cancelada INTEGER NOT NULL DEFAULT 0,
@@ -71,6 +72,7 @@ CREATE TABLE IF NOT EXISTS respaldo_becario (
     estado TEXT NOT NULL DEFAULT 'En renovación',
     porcentaje_anterior TEXT NOT NULL DEFAULT '0%',
     porcentaje_gestion TEXT NOT NULL DEFAULT '0%',
+    condicion TEXT NOT NULL DEFAULT '',
     horas_becarias INTEGER NOT NULL DEFAULT 0,
     materias_en_orden INTEGER NOT NULL DEFAULT 0,
     carpeta_cancelada INTEGER NOT NULL DEFAULT 0,
@@ -108,6 +110,19 @@ def _migrar_respaldo(conn) -> None:
     columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(respaldo_becario)")}
     if "gestion_ingreso" not in columnas:
         conn.execute("ALTER TABLE respaldo_becario ADD COLUMN gestion_ingreso TEXT NOT NULL DEFAULT ''")
+    if "condicion" not in columnas:
+        conn.execute("ALTER TABLE respaldo_becario ADD COLUMN condicion TEXT NOT NULL DEFAULT ''")
+
+
+def _migrar_seguimiento(conn) -> None:
+    """Agrega condicion a seguimientos viejos (idempotente, sin perder datos).
+
+    Las columnas de porcentaje NO se tocan: se conservan en la BD aunque
+    la UI ya no las muestre.
+    """
+    columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(seguimiento_becario)")}
+    if "condicion" not in columnas:
+        conn.execute("ALTER TABLE seguimiento_becario ADD COLUMN condicion TEXT NOT NULL DEFAULT ''")
 
 
 def init_db(db_path: Path = DB_PATH) -> None:
@@ -117,6 +132,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
         conn.commit()
         _migrar_becario(conn)
         _migrar_respaldo(conn)
+        _migrar_seguimiento(conn)
         conn.commit()
     finally:
         conn.close()
@@ -127,6 +143,7 @@ def init_db(db_path: Path = DB_PATH) -> None:
         asegurar_datos_ejemplo,
         completar_tipos_vacios,
         distribuir_estados_ejemplo,
+        migrar_condicion_inicial,
     )
     from app.services.catalogo_service import (
         asegurar_catalogos,
@@ -141,3 +158,4 @@ def init_db(db_path: Path = DB_PATH) -> None:
     asegurar_datos_ejemplo(db_path=db_path)
     completar_tipos_vacios(db_path=db_path)
     distribuir_estados_ejemplo(db_path=db_path)
+    migrar_condicion_inicial(db_path=db_path)

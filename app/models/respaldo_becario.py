@@ -18,6 +18,7 @@ class RespaldoBecario:
     estado: str = ""
     porcentaje_anterior: str = "0%"
     porcentaje_gestion: str = "0%"
+    condicion: str = ""
     horas_becarias: bool = False
     materias_en_orden: bool = False
     carpeta_cancelada: bool = False

@@ -10,12 +10,13 @@ from app.persistence.database import DB_PATH, get_connection
 
 _COLUMNAS = ("id, gestion_respaldada, becario_id, nombres, apellidos, ci,"
              " codigo_estudiante, carrera, contacto, tipo_beca, estado,"
-             " porcentaje_anterior, porcentaje_gestion, horas_becarias,"
+             " porcentaje_anterior, porcentaje_gestion, condicion, horas_becarias,"
              " materias_en_orden, carpeta_cancelada, carta_renovacion,"
              " gestion_ingreso, creado_en")
 
 
 def _mapear(fila) -> RespaldoBecario:
+    columnas = set(fila.keys())
     return RespaldoBecario(
         id=fila["id"], gestion_respaldada=fila["gestion_respaldada"],
         becario_id=fila["becario_id"], nombres=fila["nombres"],
@@ -24,6 +25,7 @@ def _mapear(fila) -> RespaldoBecario:
         contacto=fila["contacto"], tipo_beca=fila["tipo_beca"], estado=fila["estado"],
         porcentaje_anterior=fila["porcentaje_anterior"],
         porcentaje_gestion=fila["porcentaje_gestion"],
+        condicion=fila["condicion"] if "condicion" in columnas else "",
         horas_becarias=bool(fila["horas_becarias"]),
         materias_en_orden=bool(fila["materias_en_orden"]),
         carpeta_cancelada=bool(fila["carpeta_cancelada"]),
@@ -44,14 +46,16 @@ def guardar_respaldo(gestion: str, filas: list[tuple, ...], db_path: Path = DB_P
             conn.execute(
                 "INSERT INTO respaldo_becario (gestion_respaldada, becario_id, nombres,"
                 " apellidos, ci, codigo_estudiante, carrera, contacto, tipo_beca, estado,"
-                " porcentaje_anterior, porcentaje_gestion, horas_becarias, materias_en_orden,"
-                " carpeta_cancelada, carta_renovacion, gestion_ingreso, creado_en)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " porcentaje_anterior, porcentaje_gestion, condicion, horas_becarias,"
+                " materias_en_orden, carpeta_cancelada, carta_renovacion,"
+                " gestion_ingreso, creado_en)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (gestion, becario.id, becario.nombres, becario.apellidos, becario.ci,
                  becario.codigo_estudiante, becario.carrera, becario.contacto,
                  becario.tipo_beca, becario.estado,
                  seg.porcentaje_anterior if seg else "0%",
                  seg.porcentaje_gestion if seg else "0%",
+                 seg.condicion if seg else "",
                  int(seg.horas_becarias) if seg else 0,
                  int(seg.materias_en_orden) if seg else 0,
                  int(seg.carpeta_cancelada) if seg else 0,

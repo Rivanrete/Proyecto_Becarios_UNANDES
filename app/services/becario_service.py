@@ -180,9 +180,13 @@ def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
 
     Crea además su SeguimientoBecario inicial con valores automáticos:
     horas en "No cumplió" y materias en "Sí" (el resto en negativo/0%).
+    La condición (Nueva/Renovación) viene obligatoria en `datos`.
     """
     limpio = _normalizar(datos)
     _validar_requeridos(limpio, db_path)
+    condicion = normalizar_condicion(datos.get("condicion", ""))
+    if condicion not in CONDICIONES_SEGUIMIENTO:
+        raise ValueError("Faltan datos obligatorios: condición (Nueva o Renovación).")
     if not limpio["gestion_ingreso"]:
         limpio["gestion_ingreso"] = obtener_gestion_predeterminada(db_path)
     permitidas = gestiones_ingreso_nuevo(db_path)
@@ -199,6 +203,7 @@ def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
     seguimiento_repository.crear_seguimiento(
         SeguimientoBecario(id=None, becario_id=becario.id, gestion=gestion_inicial,
                            porcentaje_anterior="0%", porcentaje_gestion="0%",
+                           condicion=condicion,
                            horas_becarias=False, materias_en_orden=True,
                            carpeta_cancelada=False, carta_renovacion=False),
         db_path,
@@ -225,7 +230,21 @@ def editar_becario(becario_id: int, datos: dict, db_path: Path = DB_PATH) -> Bec
     actualizado = Becario(id=becario_id, **limpio)
     # El estado se gestiona en HU-03, no en este formulario: se preserva.
     actualizado.estado = actual.estado
-    return becario_repository.actualizar_becario(actualizado, db_path)
+    guardado = becario_repository.actualizar_becario(actualizado, db_path)
+    # La condición vive en el seguimiento más reciente (misma gestión que
+    # muestra el listado); si el formulario la trae, se guarda ahí.
+    condicion = normalizar_condicion(datos.get("condicion", ""))
+    if condicion:
+        if condicion not in CONDICIONES_SEGUIMIENTO:
+            raise ValueError("Condición no válida. Use Nueva o Renovación.")
+        seguimientos = seguimiento_repository.listar_por_becario(becario_id, db_path)
+        if seguimientos:
+            objetivo = seguimientos[-1]
+            objetivo.condicion = condicion
+            seguimiento_repository.actualizar(objetivo, db_path)
+        else:
+            actualizar_condicion(becario_id, None, condicion, db_path)
+    return guardado
 
 
 def obtener_becario(becario_id: int, db_path: Path = DB_PATH) -> Becario | None:
@@ -326,6 +345,72 @@ def actualizar_carta_renovacion(
 
 
 ESTADOS_BECARIO = ["Activo", "En renovación", "Baja/Inactivo"]
+
+# Condición del becario en la gestión (columna "Nueva / Renovación" del
+# listado). Solo informativa: no participa en colores, vencidos ni filtros.
+CONDICIONES_SEGUIMIENTO = ("Nueva", "Renovación")
+
+
+def normalizar_condicion(valor: str) -> str:
+    """'nueva' -> 'Nueva'; 'renovacion' (con o sin tilde) -> 'Renovación'."""
+    texto = (valor or "").strip().lower()
+    if texto == "nueva":
+        return "Nueva"
+    if texto in ("renovación", "renovacion"):
+        return "Renovación"
+    return (valor or "").strip()
+
+
+def actualizar_condicion(
+    becario_id: int, periodo: str | None, valor: str, db_path: Path = DB_PATH
+) -> SeguimientoBecario:
+    """Guarda Nueva/Renovación en el registro del periodo (existe o creado).
+
+    Mismo camino que los otros badges de seguimiento (vía rápida en la UI,
+    sin recargar la tabla). No toca colores, vencidos ni alertas.
+    """
+    condicion = normalizar_condicion(valor)
+    if condicion not in CONDICIONES_SEGUIMIENTO:
+        raise ValueError("Condición no válida. Use Nueva o Renovación.")
+    if becario_repository.buscar_por_id(becario_id, db_path) is None:
+        raise ValueError("El becario no existe.")
+    seg = _asegurar_seguimiento(becario_id, periodo, db_path)
+    seg.condicion = condicion
+    return seguimiento_repository.actualizar(seg, db_path)
+
+
+def obtener_condicion_actual(becario_id: int, db_path: Path = DB_PATH) -> str:
+    """Condición del seguimiento más reciente ("", si aún no tiene)."""
+    seguimientos = seguimiento_repository.listar_por_becario(becario_id, db_path)
+    if not seguimientos:
+        return ""
+    return seguimientos[-1].condicion or ""
+
+
+def migrar_condicion_inicial(db_path: Path = DB_PATH) -> dict:
+    """Rellena condicion en seguimientos viejos. Idempotente.
+
+    Solo toca filas con condicion vacía: "Nueva" si la gestión de ingreso
+    del becario es igual a la gestión predeterminada, "Renovación" en caso
+    contrario. Las columnas de porcentaje no se tocan (se conservan aunque
+    la UI ya no las muestre). Retorna {"nuevas", "renovacion"}.
+    """
+    from app.services.gestion_service import obtener_gestion_predeterminada
+
+    gestion_actual = obtener_gestion_predeterminada(db_path)
+    nuevas = renovacion = 0
+    for becario in becario_repository.listar_todos(db_path):
+        for seg in seguimiento_repository.listar_por_becario(becario.id, db_path):
+            if (seg.condicion or "").strip():
+                continue
+            seg.condicion = ("Nueva" if (becario.gestion_ingreso or "") == gestion_actual
+                             else "Renovación")
+            seguimiento_repository.actualizar(seg, db_path)
+            if seg.condicion == "Nueva":
+                nuevas += 1
+            else:
+                renovacion += 1
+    return {"nuevas": nuevas, "renovacion": renovacion}
 
 
 def actualizar_estado(becario_id: int, estado: str, db_path: Path = DB_PATH) -> Becario:
@@ -472,22 +557,22 @@ def incumple_requisitos(estado: str, seg, fecha_limite: str | None,
 # Sirven para probar el listado y el futuro filtro por carrera.
 # ---------------------------------------------------------------------------
 _DATOS_EJEMPLO = [
-    # (nombres, apellidos, ci, codigo, carrera, contacto, tipo, estado, %ant, horas, mat, carpeta, carta, ingreso)
-    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Beca Excelencia Académica", "Activo", "100%", True, True, True, True, "I-2024"),
-    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Beca Económica Social Renovación", "Activo", "0%", False, False, False, False, "II-2024"),
-    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Beca Económica Social Nuevas", "Activo", "50%", True, False, False, True, "I-2025"),
-    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Beca Personal Administrativo", "Activo", "50%", True, True, False, True, "II-2025"),
-    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Beca Honorífica Directorio", "Activo", "100%", True, True, True, False, "I-2026"),
-    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Beca Social Ministerio de Educación Renovación", "En renovación", "0%", False, True, False, False, "II-2026"),
-    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Beca Excelencia Académica", "En renovación", "100%", False, True, False, False, "I-2024"),
-    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Beca Convenio Interinstitucional Renovación", "Activo", "50%", True, True, True, True, "II-2024"),
-    ("Miguel", "Huanca Copa", "7452309", "25034", "LGYH", "71234509", "Beca Convenio Interinstitucional Nuevas", "Activo", "50%", True, False, True, True, "I-2025"),
-    ("Paola", "Ríos Fernández", "6981342", "25108", "LGYH", "71234510", "Beca Personal Administrativo", "Activo", "100%", True, True, True, True, "II-2025"),
-    ("Luis", "Copa Ticona", "8234567", "25241", "LGYH", "71234511", "Beca Honorífica Directorio", "Baja/Inactivo", "0%", False, False, False, True, "I-2026"),
-    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Beca Social Ministerio de Educación Renovación", "Activo", "100%", True, True, False, True, "II-2026"),
-    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Plan Beca Marketing Renovación", "Activo", "50%", False, True, False, False, "I-2024"),
-    ("Carolina", "Paredes Flores", "7981234", "27045", "CPU", "71234514", "Plan Beca Marketing Nuevas", "Activo", "100%", True, True, True, True, "I-2025"),
-    ("Javier", "Ticona Ríos", "6456789", "27190", "CPU", "71234515", "Beca Económica Social Renovación", "En renovación", "0%", False, False, False, False, "II-2025"),
+    # (nombres, apellidos, ci, codigo, carrera, contacto, tipo, estado, %ant, horas, mat, carpeta, carta, ingreso, condicion)
+    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Beca Excelencia Académica", "Activo", "100%", True, True, True, True, "I-2024", "Renovación"),
+    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Beca Económica Social Renovación", "Activo", "0%", False, False, False, False, "II-2024", "Renovación"),
+    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Beca Económica Social Nuevas", "Activo", "50%", True, False, False, True, "I-2025", "Renovación"),
+    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Beca Personal Administrativo", "Activo", "50%", True, True, False, True, "II-2025", "Nueva"),
+    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Beca Honorífica Directorio", "Activo", "100%", True, True, True, False, "I-2026", "Renovación"),
+    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Beca Social Ministerio de Educación Renovación", "En renovación", "0%", False, True, False, False, "II-2026", "Nueva"),
+    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Beca Excelencia Académica", "En renovación", "100%", False, True, False, False, "I-2024", "Renovación"),
+    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Beca Convenio Interinstitucional Renovación", "Activo", "50%", True, True, True, True, "II-2024", "Renovación"),
+    ("Miguel", "Huanca Copa", "7452309", "25034", "LGYH", "71234509", "Beca Convenio Interinstitucional Nuevas", "Activo", "50%", True, False, True, True, "I-2025", "Nueva"),
+    ("Paola", "Ríos Fernández", "6981342", "25108", "LGYH", "71234510", "Beca Personal Administrativo", "Activo", "100%", True, True, True, True, "II-2025", "Renovación"),
+    ("Luis", "Copa Ticona", "8234567", "25241", "LGYH", "71234511", "Beca Honorífica Directorio", "Baja/Inactivo", "0%", False, False, False, True, "I-2026", "Nueva"),
+    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Beca Social Ministerio de Educación Renovación", "Activo", "100%", True, True, False, True, "II-2026", "Nueva"),
+    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Plan Beca Marketing Renovación", "Activo", "50%", False, True, False, False, "I-2024", "Renovación"),
+    ("Carolina", "Paredes Flores", "7981234", "27045", "CPU", "71234514", "Plan Beca Marketing Nuevas", "Activo", "100%", True, True, True, True, "I-2025", "Nueva"),
+    ("Javier", "Ticona Ríos", "6456789", "27190", "CPU", "71234515", "Beca Económica Social Renovación", "En renovación", "0%", False, False, False, False, "II-2025", "Renovación"),
 ]
 
 
@@ -496,7 +581,7 @@ def asegurar_datos_ejemplo(db_path: Path = DB_PATH) -> int:
     if becario_repository.contar_becarios(db_path) > 0:
         return 0
     for (nombres, apellidos, ci, codigo, carrera, contacto, tipo_beca, estado,
-         porc_ant, horas, mat, carpeta, carta, ingreso) in _DATOS_EJEMPLO:
+         porc_ant, horas, mat, carpeta, carta, ingreso, condicion) in _DATOS_EJEMPLO:
         becario = becario_repository.insertar_becario(
             Becario(id=None, nombres=nombres, apellidos=apellidos, ci=ci,
                     codigo_estudiante=codigo, carrera=carrera, contacto=contacto,
@@ -506,6 +591,7 @@ def asegurar_datos_ejemplo(db_path: Path = DB_PATH) -> int:
         seguimiento_repository.crear_seguimiento(
             SeguimientoBecario(id=None, becario_id=becario.id, gestion=obtener_gestion_actual(),
                                porcentaje_anterior=porc_ant, porcentaje_gestion=porc_ant,
+                               condicion=condicion,
                                horas_becarias=horas, materias_en_orden=mat,
                                carpeta_cancelada=carpeta, carta_renovacion=carta),
             db_path,

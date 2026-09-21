@@ -58,7 +58,7 @@ class FichaBecarioWindow(DialogoBase):
     """Recibe la ficha ya armada por obtener_ficha_completa(). Solo muestra."""
 
     # (becario_id, campo, nuevo_valor): main la conecta al listado en vivo.
-    cambio_guardado = Signal(int, str, bool)
+    cambio_guardado = Signal(int, str, object)
 
     def __init__(self, parent=None, ficha: dict | None = None):
         super().__init__(parent, modal=True)
@@ -140,7 +140,8 @@ class FichaBecarioWindow(DialogoBase):
         else:
             form_seg = QFormLayout()
             form_seg.setSpacing(8)
-            form_seg.addRow("% Anterior:", self._dato(seg.porcentaje_anterior, card))
+            form_seg.addRow("Condición:",
+                            self._badge_menu("condicion", seg.condicion or "Nueva", card))
             form_seg.addRow("Gestión:", self._dato(seg.gestion, card))
             form_seg.addRow("Horas Becarias:",
                             self._badge_menu("horas_becarias", seg.horas_becarias, card))
@@ -183,11 +184,16 @@ class FichaBecarioWindow(DialogoBase):
         etiqueta.setStyleSheet(estilo)
         return etiqueta
 
-    def _badge_menu(self, campo: str, valor_actual: bool, padre) -> QLabel:
+    def _badge_menu(self, campo: str, valor_actual, padre) -> QLabel:
         """Badge clickeable: mismo desplegable de opciones que el panel."""
-        etiqueta = self._badge(
-            _texto_opcion(campo, valor_actual),
-            ESTILO_BADGE_VERDE if valor_actual else ESTILO_BADGE_ROJO, padre)
+        if campo == "condicion":
+            # Solo informativa: estilo neutro en ambos valores.
+            etiqueta = self._badge(
+                _texto_opcion(campo, valor_actual), ESTILO_BADGE_NEUTRO, padre)
+        else:
+            etiqueta = self._badge(
+                _texto_opcion(campo, valor_actual),
+                ESTILO_BADGE_VERDE if valor_actual else ESTILO_BADGE_ROJO, padre)
         etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
         etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
         etiqueta.setToolTip("")
@@ -232,7 +238,7 @@ class FichaBecarioWindow(DialogoBase):
     def _mostrar_menu_opciones(self, etiqueta: QLabel):
         self._construir_menu_opciones(etiqueta).exec(QCursor.pos())
 
-    def _elegir_opcion(self, etiqueta: QLabel, opcion: bool):
+    def _elegir_opcion(self, etiqueta: QLabel, opcion):
         """Guarda la opción elegida y actualiza el badge (sin recargar)."""
         info = self._menu_info.get(etiqueta)
         seg = self.ficha["seguimiento"]
@@ -240,7 +246,10 @@ class FichaBecarioWindow(DialogoBase):
             return
         try:
             campo = info["campo"]
-            if campo == "horas_becarias":
+            if campo == "condicion":
+                becario_service.actualizar_condicion(seg.becario_id, seg.gestion, opcion)
+                seg.condicion = opcion
+            elif campo == "horas_becarias":
                 becario_service.actualizar_horas_becarias(seg.becario_id, seg.gestion, opcion)
                 seg.horas_becarias = opcion
             elif campo == "materias_en_orden":
@@ -257,8 +266,11 @@ class FichaBecarioWindow(DialogoBase):
             return
         info["valor"] = opcion
         etiqueta.setText(_texto_opcion(campo, opcion))
-        etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if opcion else ESTILO_BADGE_ROJO)
-        self.cambio_guardado.emit(seg.becario_id, campo, bool(opcion))
+        if campo == "condicion":
+            etiqueta.setStyleSheet(ESTILO_BADGE_NEUTRO)
+        else:
+            etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if opcion else ESTILO_BADGE_ROJO)
+        self.cambio_guardado.emit(seg.becario_id, campo, opcion)
 
     def _apply_style(self):
         self.setStyleSheet(f"""

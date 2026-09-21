@@ -119,6 +119,10 @@ class BecarioFormWindow(DialogoBase):
         self.cmb_tipo.setMaxVisibleItems(self.cmb_tipo.count())
         self.cmb_tipo.setPlaceholderText("Seleccione un tipo de beca")
         self.cmb_tipo.setCurrentIndex(-1)
+        self.cmb_condicion = QComboBox(card)
+        self.cmb_condicion.addItems(list(becario_service.CONDICIONES_SEGUIMIENTO))
+        self.cmb_condicion.setPlaceholderText("Seleccione condición")
+        self.cmb_condicion.setCurrentIndex(-1)
         self.cmb_ingreso = QComboBox(card)
         if self.becario_id is None:
             for gestion in becario_service.gestiones_ingreso_nuevo():
@@ -141,6 +145,7 @@ class BecarioFormWindow(DialogoBase):
             self.txt_codigo,
             self.cmb_carrera,
             self.cmb_tipo,
+            self.cmb_condicion,
             self.cmb_ingreso,
             self.txt_contacto,
         ):
@@ -151,6 +156,7 @@ class BecarioFormWindow(DialogoBase):
         form.addRow("Código:", self.txt_codigo)
         form.addRow("Carrera:", self.cmb_carrera)
         form.addRow("Tipo de Beca:", self.cmb_tipo)
+        form.addRow("Condición:", self.cmb_condicion)
         form.addRow("Gestión de ingreso:", self.cmb_ingreso)
         form.addRow("Contacto:", self.txt_contacto)
         layout.addLayout(form)
@@ -197,6 +203,10 @@ class BecarioFormWindow(DialogoBase):
         indice_tipo = self.cmb_tipo.findText(becario.tipo_beca)
         if indice_tipo >= 0:
             self.cmb_tipo.setCurrentIndex(indice_tipo)
+        condicion = becario_service.obtener_condicion_actual(self.becario_id)
+        indice_condicion = self.cmb_condicion.findText(condicion)
+        if indice_condicion >= 0:
+            self.cmb_condicion.setCurrentIndex(indice_condicion)
         indice_ingreso = self.cmb_ingreso.findData(becario.gestion_ingreso or "")
         if indice_ingreso < 0 and becario.gestion_ingreso:
             self.cmb_ingreso.insertItem(
@@ -217,6 +227,7 @@ class BecarioFormWindow(DialogoBase):
             "codigo_estudiante": self.txt_codigo.text(),
             "carrera": self.cmb_carrera.currentData() or self.cmb_carrera.currentText(),
             "tipo_beca": self.cmb_tipo.currentText(),
+            "condicion": self.cmb_condicion.currentText(),
             "gestion_ingreso": self.cmb_ingreso.currentData() or "",
             "contacto": self.txt_contacto.text(),
         }
@@ -236,6 +247,10 @@ class BecarioFormWindow(DialogoBase):
         indice_tipo = self.cmb_tipo.findText(tipo)
         if indice_tipo >= 0:
             self.cmb_tipo.setCurrentIndex(indice_tipo)
+        condicion = self._snapshot_original.get("condicion", "")
+        indice_condicion = self.cmb_condicion.findText(condicion)
+        if indice_condicion >= 0:
+            self.cmb_condicion.setCurrentIndex(indice_condicion)
         ingreso = self._snapshot_original.get("gestion_ingreso", "")
         indice_ingreso = self.cmb_ingreso.findData(ingreso)
         if indice_ingreso >= 0:
@@ -287,6 +302,7 @@ class BecarioFormWindow(DialogoBase):
             "codigo_estudiante": self.txt_codigo.text(),
             "carrera": self.cmb_carrera.currentData() or self.cmb_carrera.currentText(),
             "tipo_beca": self.cmb_tipo.currentText(),
+            "condicion": self.cmb_condicion.currentText(),
             "gestion_ingreso": self.cmb_ingreso.currentData() or "",
             "contacto": self.txt_contacto.text(),
         }

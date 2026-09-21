@@ -66,7 +66,9 @@ def resetear_periodo(db_path: Path = DB_PATH, gestion_nueva: str | None = None) 
     La fila de la gestión que termina se conserva intacta; se crea una
     fila NUEVA para la gestión indicada con los valores reiniciados:
     - horas_becarias, carpeta_cancelada, carta_renovacion -> False (0/No).
-    - materias_en_orden y porcentajes se heredan de la fila anterior.
+    - materias_en_orden, porcentajes y condicion (Nueva/Renovación) se
+      heredan de la fila anterior (la condición nunca se reinicia ni
+      cambia sola: no hay transición Nueva -> Renovación).
     - estado -> "En renovación".
     - Nombres, CI, carrera y demás campos no se tocan.
     Si la fila nueva ya existe (reintento), se reinicia sobre ella.
@@ -92,6 +94,7 @@ def resetear_periodo(db_path: Path = DB_PATH, gestion_nueva: str | None = None) 
                 id=None, becario_id=becario.id, gestion=nueva,
                 porcentaje_anterior=base.porcentaje_anterior,
                 porcentaje_gestion=base.porcentaje_gestion,
+                condicion=base.condicion or "Nueva",
                 horas_becarias=False, materias_en_orden=base.materias_en_orden,
                 carpeta_cancelada=False, carta_renovacion=False), db_path)
         else:
