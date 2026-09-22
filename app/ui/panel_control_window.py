@@ -54,6 +54,7 @@ COLUMNAS = [
     "Apellidos",
     "Nombres",
     "Código",
+    "Celular",
     "Nueva /\nRenovación",
     "Gestión",
     "Horas Becarias",
@@ -67,8 +68,24 @@ COLUMNAS = [
 _ABREVIATURAS_FIJAS = {"No cumplió": "No cump.", "En renovación": "En renov.",
                        "Renovación": "Renov."}
 
+# Índices de la tabla principal (una columna nueva corre a las siguientes;
+# por eso todo el código usa estas constantes, no números sueltos).
+INDICE_COLUMNA_CODIGO = 4
+INDICE_COLUMNA_CELULAR = 5
+INDICE_COLUMNA_CONDICION = 6
+INDICE_COLUMNA_GESTION = 7
+INDICE_COLUMNA_HORAS = 8
+INDICE_COLUMNA_MATERIAS = 9
+INDICE_COLUMNA_CARPETA = 10
+INDICE_COLUMNA_CARTA = 11
+INDICE_COLUMNA_ESTADO = 12
+
 # Variante corta de encabezado (de beymar) cuando la columna queda angosta.
-_ABREVIATURAS_ENCABEZADO = {5: "N. / R.", 9: "C. C.", 10: "C. de R."}
+_ABREVIATURAS_ENCABEZADO = {
+    INDICE_COLUMNA_CONDICION: "N. / R.",
+    INDICE_COLUMNA_CARPETA: "C. C.",
+    INDICE_COLUMNA_CARTA: "C. de R.",
+}
 
 # Margen que se reserva al abreviar badges (acolchado del estilo + aire).
 MARGEN_BADGE_PX = 26
@@ -122,10 +139,6 @@ def _estilo_opcion(campo: str, valor) -> str:
 TEXTO_BUSQUEDA = "Buscar por código Ej: 23718 o por nombre Beymar Condori Quispe"
 TEXTO_SIN_RESULTADOS = "Ninguna coincidencia"
 
-# Índice de la columna Código en la tabla principal (doble clic = perfil SIAC).
-INDICE_COLUMNA_CODIGO = 4
-# Índice de la columna Condición (texto plano clickeable, abre su desplegable).
-INDICE_COLUMNA_CONDICION = 5
 URL_PERFIL_SIAC = "https://udelosandes.com/siac/estudiante/informacion_academica/{codigo}/218"
 
 
@@ -290,17 +303,18 @@ class PanelControlWindow(QMainWindow):
         cabecera.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         cabecera.setStretchLastSection(False)
         self.tabla.setColumnWidth(0, 48)
-        self.tabla.setColumnWidth(1, 115)
-        self.tabla.setColumnWidth(2, 150)
-        self.tabla.setColumnWidth(3, 150)
+        self.tabla.setColumnWidth(1, 110)
+        self.tabla.setColumnWidth(2, 110)
+        self.tabla.setColumnWidth(3, 110)
         self.tabla.setColumnWidth(4, 90)
-        self.tabla.setColumnWidth(5, 86)
-        self.tabla.setColumnWidth(6, 92)
-        self.tabla.setColumnWidth(7, 120)
+        self.tabla.setColumnWidth(5, 84)
+        self.tabla.setColumnWidth(6, 86)
+        self.tabla.setColumnWidth(7, 92)
         self.tabla.setColumnWidth(8, 120)
-        self.tabla.setColumnWidth(9, 82)
-        self.tabla.setColumnWidth(10, 92)
-        self.tabla.setColumnWidth(11, 90)
+        self.tabla.setColumnWidth(9, 120)
+        self.tabla.setColumnWidth(10, 82)
+        self.tabla.setColumnWidth(11, 92)
+        self.tabla.setColumnWidth(12, 90)
         self.tabla.installEventFilter(self)
         # Doble clic abre el becario en modo edición (HU-02, CA-1).
         self.tabla.cellDoubleClicked.connect(self._abrir_editar)
@@ -428,30 +442,31 @@ class PanelControlWindow(QMainWindow):
         for indice_local, fila in enumerate(pagina_actual, start=1):
             fila_real = self.tabla.rowCount()
             self.tabla.insertRow(fila_real)
-            becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo, estado = fila
+            becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo, estado, contacto = fila
             self._ids_fila.append(becario_id)
             self._celda_texto(fila_real, 0, str(inicio + indice_local))
             self._celda_texto(fila_real, 1, carrera)
             self._celda_texto(fila_real, 2, apellidos)
             self._celda_texto(fila_real, 3, nombres)
             self._celda_texto(fila_real, 4, codigo)
+            self._celda_texto(fila_real, INDICE_COLUMNA_CELULAR, contacto or "—")
             self._celda_condicion(
                 fila_real, becario_id, seg.condicion or "Nueva",
                 real.gestion if real is not None else None)
-            self._celda_texto(fila_real, 6, gestion)
-            self._celda_badge_menu(fila_real, 7, becario_id, "horas_becarias",
+            self._celda_texto(fila_real, INDICE_COLUMNA_GESTION, gestion)
+            self._celda_badge_menu(fila_real, INDICE_COLUMNA_HORAS, becario_id, "horas_becarias",
                                      seg.horas_becarias,
                                      real.gestion if real is not None else None)
-            self._celda_badge_menu(fila_real, 8, becario_id, "materias_en_orden",
+            self._celda_badge_menu(fila_real, INDICE_COLUMNA_MATERIAS, becario_id, "materias_en_orden",
                                      seg.materias_en_orden,
                                      real.gestion if real is not None else None)
-            self._celda_badge_menu(fila_real, 9, becario_id, "carpeta_cancelada",
+            self._celda_badge_menu(fila_real, INDICE_COLUMNA_CARPETA, becario_id, "carpeta_cancelada",
                                      seg.carpeta_cancelada,
                                      real.gestion if real is not None else None)
-            self._celda_badge_menu(fila_real, 10, becario_id, "carta_renovacion",
+            self._celda_badge_menu(fila_real, INDICE_COLUMNA_CARTA, becario_id, "carta_renovacion",
                                      seg.carta_renovacion,
                                      real.gestion if real is not None else None)
-            self._celda_badge_menu(fila_real, 11, becario_id, "estado", estado, None)
+            self._celda_badge_menu(fila_real, INDICE_COLUMNA_ESTADO, becario_id, "estado", estado, None)
             if becario_service.incumple_requisitos(
                     estado, real if real is not None else seg, self._fecha_limite):
                 self._resaltar_fila_vencida(fila_real)
@@ -789,7 +804,8 @@ class PanelControlWindow(QMainWindow):
              seg.gestion if seg is not None else "—",
              seg,
              b.tipo_beca,
-             b.estado)
+             b.estado,
+             b.contacto)
             for b, seg in becario_service.listar_para_panel()
             if b.estado != "Baja/Inactivo"
         ]
@@ -924,7 +940,7 @@ class PanelControlWindow(QMainWindow):
         existe, si no el de exhibición. Sin fecha límite nunca es pendiente.
         """
         (_bid, _carrera, _ape, _nom, _cod, seg_mostrar, _gestion,
-         seg_real, _tipo, estado) = fila
+         seg_real, _tipo, estado, _contacto) = fila
         return becario_service.incumple_requisitos(
             estado, seg_real if seg_real is not None else seg_mostrar,
             self._fecha_limite)
@@ -973,19 +989,26 @@ class PanelControlWindow(QMainWindow):
 
     def _resaltar_fila_vencida(self, fila_visible: int):
         """Tiñe las celdas de texto de la fila (los badges no se tocan)."""
-        for columna in range(INDICE_COLUMNA_CODIGO + 3):  # 0..6: solo texto
+        for columna in range(INDICE_COLUMNA_GESTION + 1):  # 0..7: solo texto
             item = self.tabla.item(fila_visible, columna)
             if item is not None:
                 item.setBackground(FONDO_FILA_VENCIDA)
+                if columna == INDICE_COLUMNA_CONDICION:
+                    continue  # conserva su tooltip de menú ("— Clic para cambiar")
                 item.setToolTip(TOOLTIP_VENCIDO)
 
     def _quitar_resaltado_fila(self, fila_visible: int):
         """Devuelve la fila a su fondo normal (tras cumplir los requisitos)."""
-        for columna in range(INDICE_COLUMNA_CODIGO + 3):
+        for columna in range(INDICE_COLUMNA_GESTION + 1):
             item = self.tabla.item(fila_visible, columna)
             if item is not None:
                 item.setBackground(QBrush())
-                item.setToolTip("")
+                if columna == INDICE_COLUMNA_CONDICION:
+                    info = self._info_condicion.get(fila_visible)
+                    item.setToolTip(
+                        f"{info['completo']} — Clic para cambiar" if info else "")
+                else:
+                    item.setToolTip(item.text())
 
     def _fila_sin_resultados(self):
         """Fila fantasma dentro de la tabla: una celda fusionada (colspan)
@@ -1006,6 +1029,7 @@ class PanelControlWindow(QMainWindow):
     def _celda_texto(self, fila: int, columna: int, texto: str):
         item = QTableWidgetItem(texto)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        item.setToolTip(texto)  # nombre completo si la columna lo trunca con "…"
         self.tabla.setItem(fila, columna, item)
 
     def _celda_badge(self, fila: int, columna: int, texto: str, positivo: bool):
@@ -1145,27 +1169,41 @@ class PanelControlWindow(QMainWindow):
         base = max(0, self.tabla.viewport().width())
         if base <= 0:
             return False
-        anchos = [48, 115, 150, 150, 90, 86, 92, 120, 120, 82, 92, 90]
+        anchos = [48, 110, 110, 110, 90, 84, 86, 92, 120, 120, 82, 92, 90]
         if sum(anchos) > base:
             exceso = sum(anchos) - base
-            # Se reducen primero los segmentos menos críticos para mantener
-            # los encabezados largos legibles sin permitir cambios manuales.
-            columnas_reducibles = [1, 2, 3, 5, 6, 9, 10, 11]
-            while exceso > 0 and columnas_reducibles:
-                for idx in columnas_reducibles:
-                    if anchos[idx] > 36:
-                        anchos[idx] -= 2
-                        exceso -= 2
-                        if exceso <= 0:
-                            break
-                if exceso <= 0:
-                    break
-                columnas_reducibles = [i for i in columnas_reducibles if anchos[i] > 36]
+            # Nivel 1: texto flexible (trunca con "…" y tooltip, sin perder datos).
+            exceso = self._encoger_columnas(anchos, exceso, [2, 3], 48)
+            exceso = self._encoger_columnas(anchos, exceso, [1], 56)
+            # Nivel 2 (último recurso): badges y condición/gestión. N., Código,
+            # Celular, Horas y Materias nunca se tocan.
+            if exceso > 0:
+                exceso = self._encoger_columnas(
+                    anchos, exceso,
+                    [INDICE_COLUMNA_CONDICION, INDICE_COLUMNA_GESTION,
+                     INDICE_COLUMNA_CARPETA, INDICE_COLUMNA_CARTA,
+                     INDICE_COLUMNA_ESTADO], 36)
         for i, ancho in enumerate(anchos):
             self.tabla.setColumnWidth(i, ancho)
         self._ajustar_encabezados_al_ancho()
         self._reabreviar_badges()
         return True
+
+    @staticmethod
+    def _encoger_columnas(anchos: list, exceso: int, indices: list,
+                          piso: int) -> int:
+        """Reparte `exceso` entre `indices` sin bajar de `piso`. Retorna el resto."""
+        pendientes = [i for i in indices if anchos[i] > piso]
+        while exceso > 0 and pendientes:
+            for idx in pendientes:
+                if anchos[idx] > piso:
+                    paso = min(2, exceso, anchos[idx] - piso)
+                    anchos[idx] -= paso
+                    exceso -= paso
+                    if exceso <= 0:
+                        break
+            pendientes = [i for i in pendientes if anchos[i] > piso]
+        return exceso
 
     def _ajustar_encabezados_al_ancho(self):
         """Título completo en dos líneas; corto ("C. C.") solo si no cabe."""
@@ -1346,7 +1384,7 @@ class PanelControlWindow(QMainWindow):
         fila = self._filas_completas[indice_cache]
         self._filas_completas[indice_cache] = (
             fila[0], fila[1], fila[2], fila[3], fila[4], fila[5],
-            fila[6], fila[7], fila[8], nuevo_estado)
+            fila[6], fila[7], fila[8], nuevo_estado, fila[10])
         if self._estado_filtro is not None and nuevo_estado != self._estado_filtro:
             self._filas_vistas = [f for f in self._filas_vistas if f[0] != becario_id]
             self._render_pagina_actual()
@@ -1362,7 +1400,9 @@ class PanelControlWindow(QMainWindow):
 
     def _olvidar_badges_de_fila(self, fila_visible: int):
         """Limpia el registro del menú de los 5 badges de la fila eliminada."""
-        for columna in (7, 8, 9, 10, 11):
+        for columna in (INDICE_COLUMNA_HORAS, INDICE_COLUMNA_MATERIAS,
+                        INDICE_COLUMNA_CARPETA, INDICE_COLUMNA_CARTA,
+                        INDICE_COLUMNA_ESTADO):
             insignia = self.tabla.cellWidget(fila_visible, columna)
             if insignia in self._menu_info:
                 del self._menu_info[insignia]
@@ -1480,7 +1520,7 @@ class PanelControlWindow(QMainWindow):
             if valor is None:
                 cantidad = total
             else:
-                cantidad = sum(1 for _, _, _, _, _, _, _, _, _, estado in self._filas_completas if estado == valor)
+                cantidad = sum(1 for _, _, _, _, _, _, _, _, _, estado, _ in self._filas_completas if estado == valor)
             accion = menu.addAction(f"{etiqueta} ({cantidad})")
             accion.setCheckable(True)
             accion.setChecked(self._estado_filtro == valor)
