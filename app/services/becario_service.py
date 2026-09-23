@@ -488,6 +488,29 @@ CLAVE_FECHA_LIMITE = "fecha_limite_requisitos"
 FLAGS_REQUISITOS = ("materias_en_orden", "carpeta_cancelada",
                     "carta_renovacion", "horas_becarias")
 
+# Nombre claro de cada parámetro para el reporte "en riesgo".
+NOMBRES_PARAMETROS = {
+    "horas_becarias": "horas becarias",
+    "materias_en_orden": "materias en orden",
+    "carpeta_cancelada": "carpeta de beca",
+    "carta_renovacion": "carta de renovación",
+}
+
+
+def parametros_faltantes(estado: str, seg) -> list[str]:
+    """Parámetros incumplidos, en texto claro (vacía si cumple todo).
+
+    Es LA regla que pinta las filas en rojo (ver incumple_requisitos) y
+    la que usa el reporte "en riesgo": `seg` None equivale a todo en
+    falso; Baja/Inactivo nunca tiene faltantes. Función pura (sin BD).
+    """
+    if (estado or "").strip() == "Baja/Inactivo":
+        return []
+    if seg is None:
+        return [NOMBRES_PARAMETROS[campo] for campo in FLAGS_REQUISITOS]
+    return [NOMBRES_PARAMETROS[campo] for campo in FLAGS_REQUISITOS
+            if not bool(getattr(seg, campo, False))]
+
 
 def obtener_fecha_limite(db_path: Path = DB_PATH) -> str | None:
     """Fecha límite vigente ("YYYY-MM-DD") o None si no hay / está vacía."""
@@ -546,9 +569,8 @@ def incumple_requisitos(estado: str, seg, fecha_limite: str | None,
         return False
     if (hoy or date.today()) < limite:
         return False
-    if seg is None:
-        return True
-    return any(not bool(getattr(seg, campo, False)) for campo in FLAGS_REQUISITOS)
+    # Misma regla que parametros_faltantes(): con o sin seguimiento.
+    return bool(parametros_faltantes(estado, seg))
 
 
 # ---------------------------------------------------------------------------
