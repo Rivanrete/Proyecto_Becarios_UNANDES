@@ -157,6 +157,7 @@ def ejecutar_con_overlay(panel: QWidget, dialogo: QDialog) -> int:
 
 
 ESPACIO_LATERAL_PX = 16
+ANCHO_SIDEBAR_PX = 220
 
 
 def _posicionar_dual(panel: QWidget, dialogo: QDialog, lateral: QDialog) -> QPoint:
@@ -165,6 +166,11 @@ def _posicionar_dual(panel: QWidget, dialogo: QDialog, lateral: QDialog) -> QPoi
     Iguala lo VISIBLE (las tarjetas, no solo las ventanas): la tarjeta
     lateral toma el alto exacto de la tarjeta del diálogo y ambas ventanas
     el mismo alto total, con los mismos márgenes -> bordes alineados.
+    El par se centra en el ÁREA DE TRABAJO (sin el sidebar): centrarlo en
+    toda la ventana lo dejaba cargado a la izquierda ("a un costado").
+    Nada se sale del panel: la posición se recorta a sus bordes; si el
+    par no cabe lado a lado (ventana muy angosta), el diálogo queda
+    completo a la izquierda y el lateral a su derecha.
     Retorna la posición del diálogo.
     """
     dialogo.adjustSize()
@@ -176,8 +182,16 @@ def _posicionar_dual(panel: QWidget, dialogo: QDialog, lateral: QDialog) -> QPoi
     lateral.setMinimumHeight(dialogo.height())
     lateral.adjustSize()
     ancho_total = dialogo.width() + ESPACIO_LATERAL_PX + lateral.width()
-    x_inicio = max(0, panel.rect().center().x() - ancho_total // 2)
-    y_comun = max(0, panel.rect().center().y() - dialogo.height() // 2)
+    izquierda_contenido = ANCHO_SIDEBAR_PX if panel.width() > ANCHO_SIDEBAR_PX else 0
+    ancho_contenido = max(0, panel.width() - izquierda_contenido)
+    centro_x = izquierda_contenido + ancho_contenido // 2
+    # Dentro del panel siempre: si no caben lado a lado, se recorre lo
+    # mínimo (el diálogo queda lo más completo posible).
+    x_inicio = min(max(izquierda_contenido, centro_x - ancho_total // 2),
+                   max(0, panel.width() - ancho_total))
+    alto = dialogo.height()
+    y_comun = min(max(0, panel.rect().center().y() - alto // 2),
+                  max(0, panel.height() - alto))
     lateral.move(x_inicio + dialogo.width() + ESPACIO_LATERAL_PX, y_comun)
     return QPoint(x_inicio, y_comun)
 
