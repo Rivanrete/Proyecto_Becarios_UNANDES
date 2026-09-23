@@ -203,6 +203,7 @@ class PanelControlWindow(QMainWindow):
         self._solo_pendientes = False
         self._fecha_limite: str | None = None
         self._estado_filtro: str | None = None
+        self._condicion_filtro: str | None = None
         self._filas_vistas: list = []
         self._pagina_actual = 1
         self._registros_por_pagina = 15
@@ -288,6 +289,12 @@ class PanelControlWindow(QMainWindow):
         self.btn_estado.setObjectName("estadoFiltro")
         self.btn_estado.clicked.connect(self._mostrar_menu_estado)
         barra_busqueda.addWidget(self.btn_estado)
+
+        self.btn_condicion = QPushButton("Condición")
+        self.btn_condicion.setObjectName("estadoFiltro")
+        self.btn_condicion.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_condicion.clicked.connect(self._mostrar_menu_condicion_filtro)
+        barra_busqueda.addWidget(self.btn_condicion)
         layout_contenido.addLayout(barra_busqueda)
 
         self.tabla = QTableWidget(0, len(COLUMNAS))
@@ -950,17 +957,19 @@ class PanelControlWindow(QMainWindow):
         return sum(1 for fila in self._filas_completas if self._fila_es_pendiente(fila))
 
     def aplicar_filtro(self, texto: str):
-        """Aplica texto, categoría, estado y pendientes (intersección acumulativa).
+        """Aplica texto, categoría, estado, condición y pendientes (AND).
 
         El código filtra por "empieza con"; nombres/apellidos por "contiene".
-        Vacío + "Todas" = todo. "Todas" limpia categoría y pendientes, y
-        conserva el texto escrito.
+        Vacío + "Todas" = todo. "Todas" limpia categoría, pendientes y
+        condición, y conserva el texto escrito.
         """
         consulta = _normalizar_texto(texto.strip())
         categoria = self._categoria_filtro
         estado = self._estado_filtro
+        condicion = self._condicion_filtro
         solo_pendientes = self._solo_pendientes
-        if not consulta and categoria is None and estado is None and not solo_pendientes:
+        if not consulta and categoria is None and estado is None \
+                and condicion is None and not solo_pendientes:
             self._filas_vistas = list(self._filas_completas)
             self._pagina_actual = 1
             self._render_pagina_actual()
@@ -975,11 +984,19 @@ class PanelControlWindow(QMainWindow):
                 or consulta in _normalizar_texto(f"{fila[2]} {fila[3]}"))
             and (categoria is None or fila[8] == categoria)
             and (estado is None or fila[9] == estado)
+            and (condicion is None or self._condicion_de_fila(fila) == condicion)
             and (not solo_pendientes or self._fila_es_pendiente(fila))
         ]
         self._filas_vistas = filtradas
         self._pagina_actual = 1
         self._render_pagina_actual()
+
+    @staticmethod
+    def _condicion_de_fila(fila) -> str:
+        """Nueva/Renovación de la fila (seguimiento real, si no el visible)."""
+        seg_real, seg_mostrar = fila[7], fila[5]
+        seg = seg_real if seg_real is not None else seg_mostrar
+        return (seg.condicion or "") if seg is not None else ""
 
     def cargar_seguimientos(self, filas):
         """Puebla la tabla desde la página actual del conjunto filtrado."""
@@ -1121,6 +1138,13 @@ class PanelControlWindow(QMainWindow):
         if self._actualizar_cache_campo(info["becario_id"], "condicion", opcion):
             info["valor"] = opcion
             info["completo"] = opcion
+            if self._condicion_filtro is not None and opcion != self._condicion_filtro:
+                # El filtro activo lo excluye: la fila sale sin reiniciar
+                # (igual que un pase a Baja/Inactivo).
+                self._filas_vistas = [f for f in self._filas_vistas
+                                      if f[0] != info["becario_id"]]
+                self._render_pagina_actual()
+                return
             item = self.tabla.item(fila, INDICE_COLUMNA_CONDICION)
             if item is not None:
                 item.setText(self._texto_visible_badge(
@@ -1337,6 +1361,12 @@ class PanelControlWindow(QMainWindow):
             return
         if not self._actualizar_cache_campo(becario_id, campo, nuevo_valor):
             return
+        if campo == "condicion" and self._condicion_filtro is not None \
+                and nuevo_valor != self._condicion_filtro:
+            # Cambio desde la ficha y el filtro lo excluye: sale sin reiniciar.
+            self._filas_vistas = [f for f in self._filas_vistas if f[0] != becario_id]
+            self._render_pagina_actual()
+            return
         for etiqueta, info in self._menu_info.items():
             if info.get("becario_id") == becario_id and info.get("campo") == campo:
                 self._pintar_badge(etiqueta, campo, nuevo_valor)
@@ -1463,11 +1493,13 @@ class PanelControlWindow(QMainWindow):
         return menu
 
     def _elegir_categoria(self, categoria: str | None):
-        """Fija el filtro de categoría ("Todas" lo limpia, conserva el texto)."""
+        """Fija el filtro de categoría ("Todas" lo limpia todo, conserva el texto)."""
         self._categoria_filtro = categoria
         self._solo_pendientes = False
         if categoria is None:
             etiqueta = "Filtrar"
+            self._condicion_filtro = None
+            self.btn_condicion.setText("Condición")
         elif categoria == "":
             etiqueta = "Filtrar: Sin categoría"
         else:
@@ -1537,6 +1569,44 @@ class PanelControlWindow(QMainWindow):
         else:
             etiqueta = f"Estado: {estado}"
         self.btn_estado.setText(etiqueta)
+        self.aplicar_filtro(self.txt_busqueda.text())
+
+    def _mostrar_menu_condicion_filtro(self):
+        """Desplegable Todos / Nuevos / Renovación con conteos del listado."""
+        menu = self._construir_menu_condicion_filtro()
+        menu.exec(self.btn_condicion.mapToGlobal(self.btn_condicion.rect().bottomLeft()))
+
+    def _construir_menu_condicion_filtro(self) -> QMenu:
+        """Arma las opciones de condición con cantidades del conjunto actual."""
+        menu = QMenu(self)
+        menu.setObjectName("menuFiltrar")
+        total = len(self._filas_completas)
+        nuevas = sum(1 for fila in self._filas_completas
+                     if self._condicion_de_fila(fila) == "Nueva")
+        renovacion = sum(1 for fila in self._filas_completas
+                         if self._condicion_de_fila(fila) == "Renovación")
+        for valor, etiqueta, cantidad in (
+                (None, "Todos", total),
+                ("Nueva", "Nuevos", nuevas),
+                ("Renovación", "Renovación", renovacion)):
+            accion = menu.addAction(f"{etiqueta} ({cantidad})")
+            accion.setCheckable(True)
+            accion.setChecked(self._condicion_filtro == valor)
+            accion.triggered.connect(
+                lambda checked=False, v=valor: self._elegir_condicion_filtro(v)
+            )
+        return menu
+
+    def _elegir_condicion_filtro(self, condicion: str | None):
+        """Fija el filtro de condición ("Todos" lo limpia, conserva el texto)."""
+        self._condicion_filtro = condicion
+        if condicion is None:
+            etiqueta = "Condición"
+        elif condicion == "Nueva":
+            etiqueta = "Condición: Nuevos"
+        else:
+            etiqueta = "Condición: Renovación"
+        self.btn_condicion.setText(etiqueta)
         self.aplicar_filtro(self.txt_busqueda.text())
 
     def _abrir_editar(self, fila: int, columna: int):
