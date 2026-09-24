@@ -181,9 +181,9 @@ class PanelControlWindow(QMainWindow):
 
     # Ítems del sidebar como (etiqueta, página). El orden visual es
     # independiente del índice de página en el QStackedWidget.
-    # Las opciones futuras (Reportes, Configuración) se agregan aquí en su HU.
+    # Las opciones futuras (Configuración) se agregan aquí en su HU.
     ITEMS_SIDEBAR = [("Panel de Control", 0), ("Respaldos", 2),
-                     ("Becarios Inactivos", 1), ("Reportes", 4), ("Informes", 3)]
+                     ("Becarios Inactivos", 1), ("Seguimiento", 4), ("Informes", 3)]
 
     def __init__(self, usuario: Usuario | None, parent=None):
         if usuario is None or not SesionActual.activa():
@@ -797,7 +797,7 @@ class PanelControlWindow(QMainWindow):
         mostrar_notificacion(self, "Informe eliminado correctamente.", tipo="exito")
 
     def _cambiar_vista(self, indice: int):
-        """Navegación del sidebar (0 = listado, 1 = inactivos, 2 = respaldos, 3 = informes, 4 = reportes)."""
+        """Navegación del sidebar (0 = listado, 1 = inactivos, 2 = respaldos, 3 = informes, 4 = seguimiento)."""
         self.paginas.setCurrentIndex(indice)
         if indice == 4:
             self._pagina_reportes.refrescar()  # datos frescos al abrir

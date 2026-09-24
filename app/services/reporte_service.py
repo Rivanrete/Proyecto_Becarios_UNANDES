@@ -111,22 +111,22 @@ def datos_reporte_riesgo(gestion: str, condicion: str | None = None,
 def html_vista_previa(datos: dict) -> str:
     """HTML sobrio para la vista previa en pantalla (mismos números del PDF)."""
     resumen = datos["resumen"]
-    partes = [f"<h2>Becarios en riesgo — {datos['gestion']}</h2>",
+    partes = [f"<h2>Seguimiento de requisitos — {datos['gestion']}</h2>",
               f"<p>Generado: {datos['generado_en'].strftime('%d/%m/%Y %H:%M')} · "
               f"Condición: {datos['condicion']}</p>",
               "<h3>Resumen</h3><ul>",
-              f"<li>Total en la gestión: <b>{resumen['total_gestion']}</b></li>",
-              f"<li>En riesgo: <b>{resumen['en_riesgo']}</b> "
-              f"({resumen['porcentaje_riesgo']} %)</li>",
-              f"<li>Dados de baja: <b>{resumen['en_baja']}</b></li>",
-              "<li>Fallas por parámetro:<ul>"]
+              f"<li>Becarios en la gestión: <b>{resumen['total_gestion']}</b></li>",
+              f"<li>Con requisitos pendientes: <b>{resumen['en_riesgo']} "
+              f"de {resumen['total_gestion']} becarios</b></li>",
+              f"<li>Dados de baja (perdieron la beca): <b>{resumen['en_baja']}</b></li>",
+              "<li>Requisitos pendientes por parámetro:<ul>"]
     for nombre, cantidad in resumen["fallas"].items():
         partes.append(f"<li>{nombre}: <b>{cantidad}</b></li>")
-    partes.append("</ul></li><li>En riesgo por tipo de beca:<ul>")
+    partes.append("</ul></li><li>Con requisitos pendientes por tipo de beca:<ul>")
     for nombre, cantidad in resumen["por_tipo"].items():
         partes.append(f"<li>{nombre}: <b>{cantidad}</b></li>")
     partes.append("</ul></li></ul>")
-    partes.append("<h3>En riesgo</h3>")
+    partes.append("<h3>Con requisitos pendientes</h3>")
     if datos["en_riesgo"]:
         partes.append("<table border='1' cellspacing='0' cellpadding='4'>"
                       "<tr><th>Código</th><th>Nombre</th><th>Carrera</th>"
@@ -137,8 +137,8 @@ def html_vista_previa(datos: dict) -> str:
                               faltan=", ".join(fila["faltantes"]), **fila))
         partes.append("</table>")
     else:
-        partes.append("<p><i>Sin becarios en riesgo en esta gestión. ¡Todo en orden!</i></p>")
-    partes.append("<h3>Dados de baja</h3>")
+        partes.append("<p><i>Sin becarios con requisitos pendientes en esta gestión. ¡Todo en orden!</i></p>")
+    partes.append("<h3>Dados de baja (perdieron la beca)</h3>")
     if datos["nota_bajas"]:
         partes.append(f"<p><i>{datos['nota_bajas']}</i></p>")
     elif datos["bajas"]:
@@ -150,12 +150,12 @@ def html_vista_previa(datos: dict) -> str:
                           "<td>{tipo_beca}</td><td>{gestion}</td></tr>".format(**fila))
         partes.append("</table>")
     else:
-        partes.append("<p><i>Sin dados de baja.</i></p>")
+        partes.append("<p><i>Ningún becario dado de baja en esta gestión.</i></p>")
     return "\n".join(partes)
 
 
 def nombre_pdf_sugerido(gestion: str, ahora: datetime | None = None) -> str:
-    """Reporte becarios en riesgo - {gestión} - {fecha}.pdf (nombre seguro)."""
+    """Seguimiento de requisitos - {gestión} - {fecha}.pdf (nombre seguro)."""
     fecha = (ahora or datetime.now()).strftime("%Y-%m-%d")
-    base = f"Reporte becarios en riesgo - {(gestion or '').strip()} - {fecha}.pdf"
+    base = f"Seguimiento de requisitos - {(gestion or '').strip()} - {fecha}.pdf"
     return "".join(c for c in base if c not in '\\/:*?"<>|').strip() or "Reporte.pdf"

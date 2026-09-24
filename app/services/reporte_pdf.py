@@ -153,7 +153,7 @@ def exportar_reporte_pdf(datos: dict, ruta_destino: str) -> str:
     fecha = datos["generado_en"].strftime("%d/%m/%Y %H:%M")
     compositor.parrafo("Universidad de los Andes - Bienestar Estudiantil",
                        _fuente(*FUENTE_SUBTITULO))
-    compositor.parrafo("Reporte de becarios en riesgo", _fuente(*FUENTE_TITULO))
+    compositor.parrafo("Seguimiento de requisitos", _fuente(*FUENTE_TITULO))
     compositor.parrafo(f"Gestión: {datos['gestion']}   ·   "
                        f"Condición: {datos['condicion']}   ·   "
                        f"Generado: {fecha}", _fuente(*FUENTE_SUBTITULO))
@@ -161,17 +161,19 @@ def exportar_reporte_pdf(datos: dict, ruta_destino: str) -> str:
     resumen = datos["resumen"]
     compositor.parrafo("Resumen", _fuente(*FUENTE_SECCION))
     compositor.parrafo(
-        f"Total en la gestión: {resumen['total_gestion']}   ·   "
-        f"En riesgo: {resumen['en_riesgo']} ({resumen['porcentaje_riesgo']} %)   ·   "
-        f"Dados de baja: {resumen['en_baja']}", _fuente(*FUENTE_SUBTITULO))
-    compositor.parrafo("Fallas por parámetro: " + "; ".join(
+        f"Becarios en la gestión: {resumen['total_gestion']}   ·   "
+        f"Con requisitos pendientes: {resumen['en_riesgo']} "
+        f"de {resumen['total_gestion']} becarios   ·   "
+        f"Dados de baja (perdieron la beca): {resumen['en_baja']}",
+        _fuente(*FUENTE_SUBTITULO))
+    compositor.parrafo("Requisitos pendientes por parámetro: " + "; ".join(
         f"{nombre}: {cantidad}" for nombre, cantidad in resumen["fallas"].items()),
         _fuente(*FUENTE_SUBTITULO))
-    compositor.parrafo("En riesgo por tipo de beca: " + "; ".join(
+    compositor.parrafo("Con requisitos pendientes por tipo de beca: " + "; ".join(
         f"{nombre}: {cantidad}" for nombre, cantidad in resumen["por_tipo"].items()),
         _fuente(*FUENTE_SUBTITULO))
     compositor.espacio(6)
-    compositor.parrafo(f"Becarios en riesgo ({len(datos['en_riesgo'])})",
+    compositor.parrafo(f"Detalle — con requisitos pendientes ({len(datos['en_riesgo'])})",
                        _fuente(*FUENTE_SECCION))
     if datos["en_riesgo"]:
         disponible = ancho - 2 * MARGEN_PX
@@ -185,10 +187,10 @@ def exportar_reporte_pdf(datos: dict, ruta_destino: str) -> str:
               f["condicion"], ", ".join(f["faltantes"])] for f in datos["en_riesgo"]],
             anchos)
     else:
-        compositor.parrafo("Sin becarios en riesgo en esta gestión. ¡Todo en orden!",
+        compositor.parrafo("Sin becarios con requisitos pendientes en esta gestión. ¡Todo en orden!",
                            _fuente(*FUENTE_SUBTITULO))
     compositor.espacio(6)
-    compositor.parrafo(f"Dados de baja ({len(datos['bajas'])})",
+    compositor.parrafo(f"Dados de baja (perdieron la beca) ({len(datos['bajas'])})",
                        _fuente(*FUENTE_SECCION))
     if datos["nota_bajas"]:
         compositor.parrafo(datos["nota_bajas"], _fuente(*FUENTE_SUBTITULO))
@@ -203,7 +205,8 @@ def exportar_reporte_pdf(datos: dict, ruta_destino: str) -> str:
              for f in datos["bajas"]],
             anchos)
     else:
-        compositor.parrafo("Sin dados de baja.", _fuente(*FUENTE_SUBTITULO))
+        compositor.parrafo("Ningún becario dado de baja en esta gestión.",
+                           _fuente(*FUENTE_SUBTITULO))
 
     total = len(compositor.paginas)
     pintor = QPainter(escritor)

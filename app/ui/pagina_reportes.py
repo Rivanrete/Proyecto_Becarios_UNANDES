@@ -29,6 +29,7 @@ class PaginaReportes(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setObjectName("contenido")
         self._build_ui()
         self.refrescar()
 
@@ -37,7 +38,7 @@ class PaginaReportes(QWidget):
         layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(14)
 
-        titulo = QLabel("Reportes — Becarios en riesgo")
+        titulo = QLabel("Seguimiento de requisitos")
         titulo.setObjectName("tituloSeccion")
         layout.addWidget(titulo)
 
@@ -137,5 +138,6 @@ class PaginaReportes(QWidget):
             return
         self.refrescar()
         mostrar_notificacion(
-            ventana, f"Reporte guardado en {Path(ruta).name} "
-                     f"con {datos['resumen']['en_riesgo']} en riesgo.", tipo="exito")
+            ventana, f"PDF guardado en {Path(ruta).name} "
+                     f"con {datos['resumen']['en_riesgo']} con requisitos pendientes.",
+            tipo="exito")
