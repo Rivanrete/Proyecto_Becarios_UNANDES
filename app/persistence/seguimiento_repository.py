@@ -1,8 +1,3 @@
-"""Acceso a datos para SeguimientoBecario (SQLite) — HU-02/HU-05/HU-08.
-
-Incluye listar_para_panel(): JOIN entre becario y seguimiento_becario
-que alimenta la tabla del Panel de Control.
-"""
 from pathlib import Path
 from typing import Optional
 
@@ -16,11 +11,11 @@ def crear_seguimiento(seg: SeguimientoBecario, db_path: Path = DB_PATH) -> Segui
     try:
         cur = conn.execute(
             "INSERT INTO seguimiento_becario (becario_id, gestion, porcentaje_anterior,"
-            " porcentaje_gestion, horas_becarias, materias_en_orden,"
+            " porcentaje_gestion, condicion, horas_becarias, materias_en_orden,"
             " carpeta_cancelada, carta_renovacion)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (seg.becario_id, seg.gestion, seg.porcentaje_anterior, seg.porcentaje_gestion,
-             int(seg.horas_becarias), int(seg.materias_en_orden),
+             seg.condicion, int(seg.horas_becarias), int(seg.materias_en_orden),
              int(seg.carpeta_cancelada), int(seg.carta_renovacion)),
         )
         conn.commit()
@@ -35,7 +30,7 @@ def obtener_por_becario(becario_id: int, gestion: str, db_path: Path = DB_PATH) 
     try:
         fila = conn.execute(
             "SELECT id, becario_id, gestion, porcentaje_anterior, porcentaje_gestion,"
-            " horas_becarias, materias_en_orden, carpeta_cancelada, carta_renovacion"
+            " condicion, horas_becarias, materias_en_orden, carpeta_cancelada, carta_renovacion"
             " FROM seguimiento_becario WHERE becario_id = ? AND gestion = ?",
             (becario_id, gestion),
         ).fetchone()
@@ -45,15 +40,15 @@ def obtener_por_becario(becario_id: int, gestion: str, db_path: Path = DB_PATH) 
 
 
 def actualizar(seg: SeguimientoBecario, db_path: Path = DB_PATH) -> SeguimientoBecario:
-    """Actualiza el registro existente de (becario_id, gestion)."""
     conn = get_connection(db_path)
     try:
         conn.execute(
             "UPDATE seguimiento_becario SET porcentaje_anterior = ?, porcentaje_gestion = ?,"
-            " horas_becarias = ?, materias_en_orden = ?, carpeta_cancelada = ?,"
+            " condicion = ?, horas_becarias = ?, materias_en_orden = ?, carpeta_cancelada = ?,"
             " carta_renovacion = ? WHERE becario_id = ? AND gestion = ?",
-            (seg.porcentaje_anterior, seg.porcentaje_gestion, int(seg.horas_becarias),
-             int(seg.materias_en_orden), int(seg.carpeta_cancelada),
+            (seg.porcentaje_anterior, seg.porcentaje_gestion, seg.condicion,
+             int(seg.horas_becarias), int(seg.materias_en_orden),
+             int(seg.carpeta_cancelada),
              int(seg.carta_renovacion), seg.becario_id, seg.gestion),
         )
         conn.commit()
@@ -63,7 +58,6 @@ def actualizar(seg: SeguimientoBecario, db_path: Path = DB_PATH) -> SeguimientoB
 
 
 def obtener_ultima_gestion(db_path: Path = DB_PATH) -> Optional[str]:
-    """Retorna la gestión más reciente con seguimientos, o None si no hay."""
     conn = get_connection(db_path)
     try:
         fila = conn.execute(
@@ -75,7 +69,6 @@ def obtener_ultima_gestion(db_path: Path = DB_PATH) -> Optional[str]:
 
 
 def eliminar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> int:
-    """Borra los seguimientos del becario (hijos primero por integridad)."""
     conn = get_connection(db_path)
     try:
         cur = conn.execute(
@@ -88,7 +81,6 @@ def eliminar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> int:
 
 
 def listar_gestiones(becario_id: int, db_path: Path = DB_PATH) -> list[str]:
-    """Gestiones del becario sin duplicados y en orden cronológico."""
     conn = get_connection(db_path)
     try:
         filas = conn.execute(
@@ -106,7 +98,7 @@ def listar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> list[Seguimi
     try:
         filas = conn.execute(
             "SELECT id, becario_id, gestion, porcentaje_anterior, porcentaje_gestion,"
-            " horas_becarias, materias_en_orden, carpeta_cancelada, carta_renovacion"
+            " condicion, horas_becarias, materias_en_orden, carpeta_cancelada, carta_renovacion"
             " FROM seguimiento_becario WHERE becario_id = ? ORDER BY id",
             (becario_id,),
         ).fetchall()
@@ -116,12 +108,14 @@ def listar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> list[Seguimi
 
 
 def _mapear(fila) -> SeguimientoBecario:
+    columnas = set(fila.keys())
     return SeguimientoBecario(
         id=fila["id"],
         becario_id=fila["becario_id"],
         gestion=fila["gestion"],
         porcentaje_anterior=fila["porcentaje_anterior"],
         porcentaje_gestion=fila["porcentaje_gestion"],
+        condicion=fila["condicion"] if "condicion" in columnas else "",
         horas_becarias=bool(fila["horas_becarias"]),
         materias_en_orden=bool(fila["materias_en_orden"]),
         carpeta_cancelada=bool(fila["carpeta_cancelada"]),
@@ -130,17 +124,13 @@ def _mapear(fila) -> SeguimientoBecario:
 
 
 def listar_para_panel(db_path: Path = DB_PATH) -> list[tuple[Becario, Optional[SeguimientoBecario]]]:
-    """JOIN becario + su seguimiento más reciente (uno por becario).
-
-    Retorna (Becario, SeguimientoBecario o None si aún no tiene).
-    """
     conn = get_connection(db_path)
     try:
         filas = conn.execute(
             "SELECT b.id AS bid, b.nombres, b.apellidos, b.ci, b.codigo_estudiante,"
             " b.carrera, b.contacto, b.tipo_beca, b.estado, b.gestion_ingreso,"
             " s.id AS sid, s.becario_id, s.gestion, s.porcentaje_anterior,"
-            " s.porcentaje_gestion, s.horas_becarias, s.materias_en_orden,"
+            " s.porcentaje_gestion, s.condicion, s.horas_becarias, s.materias_en_orden,"
             " s.carpeta_cancelada, s.carta_renovacion"
             " FROM becario b LEFT JOIN seguimiento_becario s ON s.id = ("
             "   SELECT id FROM seguimiento_becario WHERE becario_id = b.id"
@@ -159,10 +149,12 @@ def listar_para_panel(db_path: Path = DB_PATH) -> list[tuple[Becario, Optional[S
         )
         seg = None
         if f["sid"] is not None:
+            claves = set(f.keys())
             seg = SeguimientoBecario(
                 id=f["sid"], becario_id=f["becario_id"], gestion=f["gestion"],
                 porcentaje_anterior=f["porcentaje_anterior"],
                 porcentaje_gestion=f["porcentaje_gestion"],
+                condicion=f["condicion"] if "condicion" in claves else "",
                 horas_becarias=bool(f["horas_becarias"]),
                 materias_en_orden=bool(f["materias_en_orden"]),
                 carpeta_cancelada=bool(f["carpeta_cancelada"]),

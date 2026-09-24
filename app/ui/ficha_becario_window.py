@@ -1,19 +1,3 @@
-"""Ficha del Becario — HU-04 (vista consolidada de solo lectura).
-
-Muestra en una sola pantalla: datos personales, categoría/estado (HU-03)
-y seguimiento (SeguimientoBecario). La sección académica es un placeholder
-para HU-05 ("Sin registro académico del periodo aún").
-
-Sin sección de documentos (opción A): la HU de documentos fue removida
-del alcance vigente del proyecto, por eso no existe ni se referencia
-DocumentoBecario en ninguna parte de esta ficha. No es un olvido.
-
-Se abre como modal integrado (frameless + overlay + animación) igual que
-el resto de modales, vía overlay.ejecutar_con_overlay().
-
-HU-05: los badges de Horas Becarias y Materias en Orden son clickeables
-y alternan su valor guardándolo en el periodo vigente.
-"""
 from PySide6.QtCore import Qt, QEvent, Signal
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
@@ -55,10 +39,8 @@ def estilo_estado(estado: str) -> str:
 
 
 class FichaBecarioWindow(DialogoBase):
-    """Recibe la ficha ya armada por obtener_ficha_completa(). Solo muestra."""
 
-    # (becario_id, campo, nuevo_valor): main la conecta al listado en vivo.
-    cambio_guardado = Signal(int, str, bool)
+    cambio_guardado = Signal(int, str, object)
 
     def __init__(self, parent=None, ficha: dict | None = None):
         super().__init__(parent, modal=True)
@@ -124,7 +106,10 @@ class FichaBecarioWindow(DialogoBase):
         layout.addWidget(self._seccion("Clasificación"))
         form_clase = QFormLayout()
         form_clase.setSpacing(8)
-        form_clase.addRow("Categoría:", self._dato(becario.tipo_beca or "—", card))
+        categoria = self._dato(becario.tipo_beca or "—", card)
+        categoria.setWordWrap(True)
+        categoria.setToolTip(becario.tipo_beca or "—")
+        form_clase.addRow("Categoría:", categoria)
         form_clase.addRow("Estado:", self._badge(becario.estado, estilo_estado(becario.estado), card))
         layout.addLayout(form_clase)
 
@@ -135,7 +120,8 @@ class FichaBecarioWindow(DialogoBase):
         else:
             form_seg = QFormLayout()
             form_seg.setSpacing(8)
-            form_seg.addRow("% Anterior:", self._dato(seg.porcentaje_anterior, card))
+            form_seg.addRow("Condición:",
+                            self._badge_menu("condicion", seg.condicion or "Nueva", card))
             form_seg.addRow("Gestión:", self._dato(seg.gestion, card))
             form_seg.addRow("Horas Becarias:",
                             self._badge_menu("horas_becarias", seg.horas_becarias, card))
@@ -178,11 +164,13 @@ class FichaBecarioWindow(DialogoBase):
         etiqueta.setStyleSheet(estilo)
         return etiqueta
 
-    def _badge_menu(self, campo: str, valor_actual: bool, padre) -> QLabel:
-        """Badge clickeable: mismo desplegable de opciones que el panel."""
-        etiqueta = self._badge(
-            _texto_opcion(campo, valor_actual),
-            ESTILO_BADGE_VERDE if valor_actual else ESTILO_BADGE_ROJO, padre)
+    def _badge_menu(self, campo: str, valor_actual, padre) -> QLabel:
+        if campo == "condicion":
+            etiqueta = self._dato(_texto_opcion(campo, valor_actual), padre)
+        else:
+            etiqueta = self._badge(
+                _texto_opcion(campo, valor_actual),
+                ESTILO_BADGE_VERDE if valor_actual else ESTILO_BADGE_ROJO, padre)
         etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
         etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
         etiqueta.setToolTip("")
@@ -191,7 +179,6 @@ class FichaBecarioWindow(DialogoBase):
         return etiqueta
 
     def _alternar_edicion(self):
-        """Alterna bloqueo/edición de badges (arranca bloqueada siempre)."""
         self._edicion_habilitada = not self._edicion_habilitada
         self.btn_editar.setText(
             "Terminar edición" if self._edicion_habilitada else "Editar")
@@ -209,7 +196,6 @@ class FichaBecarioWindow(DialogoBase):
         return super().eventFilter(obj, event)
 
     def _construir_menu_opciones(self, etiqueta: QLabel):
-        """Arma el desplegable (sin mostrarlo). Cerrar sin elegir no cambia nada."""
         info = self._menu_info.get(etiqueta)
         menu = QMenu(self)
         menu.setObjectName("menuFiltrar")
@@ -227,15 +213,17 @@ class FichaBecarioWindow(DialogoBase):
     def _mostrar_menu_opciones(self, etiqueta: QLabel):
         self._construir_menu_opciones(etiqueta).exec(QCursor.pos())
 
-    def _elegir_opcion(self, etiqueta: QLabel, opcion: bool):
-        """Guarda la opción elegida y actualiza el badge (sin recargar)."""
+    def _elegir_opcion(self, etiqueta: QLabel, opcion):
         info = self._menu_info.get(etiqueta)
         seg = self.ficha["seguimiento"]
         if info is None or seg is None:
             return
         try:
             campo = info["campo"]
-            if campo == "horas_becarias":
+            if campo == "condicion":
+                becario_service.actualizar_condicion(seg.becario_id, seg.gestion, opcion)
+                seg.condicion = opcion
+            elif campo == "horas_becarias":
                 becario_service.actualizar_horas_becarias(seg.becario_id, seg.gestion, opcion)
                 seg.horas_becarias = opcion
             elif campo == "materias_en_orden":
@@ -252,8 +240,11 @@ class FichaBecarioWindow(DialogoBase):
             return
         info["valor"] = opcion
         etiqueta.setText(_texto_opcion(campo, opcion))
-        etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if opcion else ESTILO_BADGE_ROJO)
-        self.cambio_guardado.emit(seg.becario_id, campo, bool(opcion))
+        if campo == "condicion":
+            etiqueta.setStyleSheet("")
+        else:
+            etiqueta.setStyleSheet(ESTILO_BADGE_VERDE if opcion else ESTILO_BADGE_ROJO)
+        self.cambio_guardado.emit(seg.becario_id, campo, opcion)
 
     def _apply_style(self):
         self.setStyleSheet(f"""

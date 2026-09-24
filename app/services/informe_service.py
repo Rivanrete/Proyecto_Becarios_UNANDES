@@ -1,21 +1,3 @@
-"""Generación del Acta del Comité de Becas (.docx) — capa de servicios.
-
-Lee PLANTILLA.docx (recurso de solo lectura en app/assets) y la completa
-con los becarios de la gestión activa. Sin Qt y sin SQL directo: los datos
-vienen de becario_service / gestion_service (misma fuente que el panel).
-
-Reglas confirmadas:
-- "Promedio de notas" y "% a Otorgar" NO existen en la BD (verificado en el
-  schema) y "% a Otorgar" se define en la reunión: ambas celdas quedan en
-  blanco en el documento para completar a mano en Word.
-- Criterio de renovación (ver mapear_categoria): carta_renovacion = 1 en la
-  gestión activa. Sin carta (0) o sin seguimiento, el becario NO se incluye
-  automáticamente; las tablas 2 (Excelencia Nueva) y 8 (Solicitudes Nuevas)
-  se conservan tal cual con las filas vacías de la plantilla, para llenar a
-  mano en Word. Baja/Inactivo se excluye siempre.
-- El párrafo narrativo con el total fijo ("...un total de 66 becas...") se
-  actualiza con el total real calculado (misma variable del resumen).
-"""
 import re
 import unicodedata
 from copy import deepcopy
@@ -33,8 +15,6 @@ from app.services.gestion_service import obtener_gestion_predeterminada
 NOMBRE_PLANTILLA = "PLANTILLA.docx"
 CARPETA_INFORMES = "informes"
 
-# (clave, etiqueta del resumen, índice de tabla en la plantilla).
-# Tablas 1-8 del .docx, en el mismo orden en que aparecen en el documento.
 CATEGORIAS = (
     ("excelencia_renov", "Excelencia Académica Renovación", 1),
     ("excelencia_nueva", "Excelencia Académica - Nueva", 2),
@@ -49,48 +29,36 @@ CATEGORIAS = (
 INDICE_TABLA_ENCABEZADO = 0
 INDICE_TABLA_RESUMEN = 9
 
-# Columnas de las 8 tablas de becarios (10 columnas fijas de la plantilla).
 COL_NUMERO = 0
 COL_APELLIDOS = 1
 COL_NOMBRES = 2
 COL_CODIGO = 3
 COL_CARRERA = 4
-COL_PROMEDIO = 5  # sin contemplar en el sistema: siempre en blanco
+COL_PROMEDIO = 5
 COL_TIPO = 6
 COL_GESTION_INICIO = 7
 COL_PORCENTAJE_ANT = 8
-COL_PORCENTAJE_OTORGAR = 9  # se define en la reunión: siempre en blanco
+COL_PORCENTAJE_OTORGAR = 9
 
 MESES_ES = ("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
             "agosto", "septiembre", "octubre", "noviembre", "diciembre")
 
 
 def _normalizar_tipo(tipo: str) -> str:
-    """Minúsculas sin tildes para comparar tipos del catálogo."""
     base = unicodedata.normalize("NFKD", tipo or "")
     return "".join(c for c in base if not unicodedata.combining(c)).lower().strip()
 
 
 def mapear_categoria(tipo_beca: str, estado: str,
                      carta_renovacion: bool) -> Optional[str]:
-    """Clave de CATEGORIAS para el becario, o None si no se autocompleta.
-
-    Criterio único: carta_renovacion = 1 (Sí) en la gestión activa, mismo
-    badge "Carta" del panel principal. Con carta se entra a la tabla de
-    Renovación del tipo (tablas 1, 3, 4, 5, 6, 7). Sin carta (0), sin
-    seguimiento o con estado Baja/Inactivo no se incluye: las tablas 2
-    (Excelencia Nueva) y 8 (Solicitudes Nuevas) quedan manuales en Word.
-
-    Función aislada a propósito: si el criterio cambia, solo se toca aquí.
-    """
     if (estado or "").strip() == "Baja/Inactivo":
         return None
     if not carta_renovacion:
         return None
     tipo = _normalizar_tipo(tipo_beca)
-    if tipo.startswith("excelencia"):
+    if "excelencia" in tipo:
         return "excelencia_renov"
-    if tipo.startswith("economica"):
+    if "economica" in tipo and "social" in tipo:
         return "economica_renov"
     if "convenio" in tipo:
         return "convenio_renov"
@@ -112,20 +80,17 @@ def carpeta_informes() -> Path:
 
 
 def fecha_actual_es(fecha: Optional[datetime] = None) -> str:
-    """'3 de septiembre de 2026' con la fecha del sistema."""
     f = fecha or datetime.now()
     return f"{f.day} de {MESES_ES[f.month - 1]} de {f.year}"
 
 
 def sugerir_nombre_acta(numero_acta: str, gestion: str) -> str:
-    """Nombre por defecto: Acta_N{numero}_{gestion}.docx (sin caracteres raros)."""
     numero_limpio = re.sub(r'[\\/:*?"<>|\s]+', "", numero_acta or "").strip() or "SN"
     gestion_limpia = re.sub(r'[\\/:*?"<>|\s]+', "", gestion or "").strip()
     return f"Acta_N{numero_limpio}_{gestion_limpia}.docx"
 
 
 def _nombre_unico(carpeta: Path, nombre: str) -> Path:
-    """Ruta dentro de carpeta que no sobrescribe: agrega _v2, _v3 si existe."""
     base = re.sub(r'[\\/:*?"<>|]+', "", nombre).strip() or "Acta.docx"
     if not base.lower().endswith(".docx"):
         base += ".docx"
@@ -138,7 +103,6 @@ def _nombre_unico(carpeta: Path, nombre: str) -> Path:
 
 
 def _escribir_celda(celda, texto: str):
-    """Escribe conservando el formato: reutiliza el primer run existente."""
     texto = texto or ""
     parrafos = celda.paragraphs
     if not parrafos:
@@ -157,15 +121,6 @@ def _escribir_celda(celda, texto: str):
 
 
 def _reemplazar_total_narrativo(doc, total: int) -> int:
-    """Reemplaza el total fijo de la plantilla ("...un total de 66 becas...")
-    por el total real, en los párrafos del cuerpo y de las tablas.
-
-    Enfoque merge-runs: primero se reconstruye el texto completo del párrafo
-    uniendo sus runs (Word suele fragmentarlo al guardar) y se busca el
-    patrón; si el número vive en un solo run se reemplaza ahí (formato
-    intacto); si está partido entre runs se redistribuye el texto nuevo en
-    el primer run y se vacían los demás. Retorna cuántos párrafos se tocaron.
-    """
     patron = re.compile(r"(un total de\s+)\d+(\s+becas)")
     reemplazados = 0
 
@@ -177,10 +132,8 @@ def _reemplazar_total_narrativo(doc, total: int) -> int:
             return False
         for run in parrafo.runs:
             if "66" in (run.text or ""):
-                # Caso común (número en un solo run): formato intacto.
                 run.text = (run.text or "").replace("66", str(total))
         if "".join((run.text or "") for run in parrafo.runs) != nuevo:
-            # Número fragmentado entre runs: se reconstruye en el primero.
             parrafo.runs[0].text = nuevo
             for run in parrafo.runs[1:]:
                 run.text = ""
@@ -199,16 +152,9 @@ def _reemplazar_total_narrativo(doc, total: int) -> int:
 
 
 def _rellenar_tabla_categoria(tabla, filas: list[tuple]) -> int:
-    """Reemplaza las filas de ejemplo por las filas reales.
-
-    `filas`: (apellidos, nombres, codigo, carrera, tipo, gestion_inicio,
-    porcentaje_anterior). Clona la primera fila de datos como plantilla de
-    formato (bordes/fuente) y renumera la columna N°. Retorna cuántas
-    celdas de datos faltantes quedaron vacías (además de las 2 por diseño).
-    """
     faltantes = 0
     elemento = tabla._tbl
-    plantilla = deepcopy(tabla.rows[1]._tr)  # fila vacía de ejemplo = formato
+    plantilla = deepcopy(tabla.rows[1]._tr)
     for fila in list(tabla.rows[1:]):
         elemento.remove(fila._tr)
     for numero, dato in enumerate(filas, start=1):
@@ -235,16 +181,6 @@ def _rellenar_tabla_categoria(tabla, filas: list[tuple]) -> int:
 def generar_acta(numero_acta: str, nombre_archivo: Optional[str] = None,
                  db_path: Path = DB_PATH,
                  fecha: Optional[datetime] = None) -> dict:
-    """Genera el .docx del acta y lo guarda en data/informes/ sin sobrescribir.
-
-    Retorna {"ruta", "nombre_archivo", "numero_acta", "gestion",
-    "conteos" [(clave, etiqueta, cantidad)], "total", "celdas_vacias",
-    "omitidos" [(apellidos, nombres, motivo)]}.
-    "celdas_vacias" incluye las 2 por fila dejadas en blanco por diseño
-    (promedio + % a otorgar) más las de datos faltantes, para avisar a la
-    Lic. cuántas debe completar a mano. Nunca falla la generación completa
-    por un campo faltante: la celda queda vacía.
-    """
     numero = (numero_acta or "").strip()
     if not numero:
         raise ValueError("El número de acta es obligatorio.")
@@ -285,8 +221,6 @@ def generar_acta(numero_acta: str, nombre_archivo: Optional[str] = None,
     for clave, etiqueta, indice in CATEGORIAS:
         if grupos[clave]:
             faltantes += _rellenar_tabla_categoria(doc.tables[indice], grupos[clave])
-        # Grupo vacío: la tabla se deja tal cual (filas vacías de la
-        # plantilla para llenado manual en Word: tablas 2 y 8).
         conteos.append((clave, etiqueta, len(grupos[clave])))
 
     total = sum(cantidad for _, _, cantidad in conteos)
@@ -296,7 +230,7 @@ def generar_acta(numero_acta: str, nombre_archivo: Optional[str] = None,
     _escribir_celda(resumen.rows[len(conteos) + 1].cells[2], str(total))
     _reemplazar_total_narrativo(doc, total)
 
-    celdas_vacias = total * 2 + faltantes  # 2 por diseño + datos faltantes
+    celdas_vacias = total * 2 + faltantes
     destino = carpeta_informes()
     destino.mkdir(parents=True, exist_ok=True)
     ruta = _nombre_unico(destino, nombre_archivo or sugerir_nombre_acta(numero, gestion))
@@ -307,7 +241,6 @@ def generar_acta(numero_acta: str, nombre_archivo: Optional[str] = None,
 
 
 def listar_informes() -> list[dict]:
-    """Informes ya generados en data/informes/, del más reciente al más viejo."""
     carpeta = carpeta_informes()
     if not carpeta.is_dir():
         return []
@@ -325,7 +258,6 @@ def listar_informes() -> list[dict]:
 
 
 def eliminar_informe(nombre: str) -> bool:
-    """Elimina el informe indicado (solo dentro de data/informes/)."""
     seguro = Path(nombre or "").name
     if not seguro or seguro in (".", ".."):
         raise ValueError("Nombre de informe no válido.")

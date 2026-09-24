@@ -1,8 +1,3 @@
-"""Entidad Carrera — catálogo (sigla única + nombre + activo).
-
-Si activo es False, no aparece en los combos pero se conserva el
-historial de becarios que la usan.
-"""
 from dataclasses import dataclass
 from typing import Optional
 

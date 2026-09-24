@@ -1,10 +1,3 @@
-"""Historial de gestiones — ventana lateral de solo lectura.
-
-Lista las gestiones registradas en seguimiento_becario para un becario,
-de la primera a la más reciente. Sin lógica: recibe la lista ya armada
-por becario_service.historial_gestiones(). Mismo lenguaje visual
-(frameless, tarjeta azul, overlay + animación del llamador).
-"""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
@@ -20,7 +13,6 @@ from app.ui.dialogo_base import DialogoBase
 
 class HistorialGestionesWindow(DialogoBase):
     def __init__(self, parent=None, gestiones: list | None = None):
-        # Sin marco nativo: ver DialogoBase (frameless, no modal).
         super().__init__(parent, modal=False)
         self.setWindowTitle("Historial de gestiones")
         self._build_ui(gestiones or [])
@@ -29,8 +21,6 @@ class HistorialGestionesWindow(DialogoBase):
     def _build_ui(self, gestiones: list):
         root = QVBoxLayout(self)
         root.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # Mismos márgenes que el formulario: con igual alto de tarjeta,
-        # los bordes superior e inferior quedan pixel a pixel alineados.
         root.setContentsMargins(40, 32, 40, 32)
 
         card = QFrame(self)

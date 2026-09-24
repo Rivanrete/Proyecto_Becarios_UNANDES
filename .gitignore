@@ -1,2 +1,10 @@
+# BD locales y datos reales: jamás se suben al repositorio.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.xlsx
+*.xls
+# Temporales y cachés
 __pycache__/
 *.pyc

@@ -1,12 +1,3 @@
-"""Entidad Becario — HU-02 (+ tipo_beca de HU-03, + estado para HU-04,
-+ gestion_ingreso para Respaldos).
-
-Datos generales del becario: id, nombres, apellidos, ci,
-codigo_estudiante, carrera (sigla), contacto, tipo_beca, estado y
-gestion_ingreso (I-AAAA o II-AAAA, "" si se desconoce).
-El estado se gestiona en HU-03; aquí solo se almacena y muestra.
-Sin lógica de validación ni de UI aquí.
-"""
 from dataclasses import dataclass
 from typing import Optional
 

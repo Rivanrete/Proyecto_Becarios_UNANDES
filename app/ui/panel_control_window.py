@@ -1,17 +1,3 @@
-"""Panel de Control — listado y consulta de becarios (HU-05 + HU-08).
-
-Integra: sidebar (Panel de Control, Respaldos, Becarios Inactivos,
-Informes), barra superior con título y botón "+ Nuevo Becario" (abre el
-formulario HU-02), búsqueda con botón "Filtrar" y tabla de seguimiento
-por gestión con badges verde/rojo.
-
-FUENTE DE DATOS: consulta real (JOIN becario + seguimiento_becario)
-vía becario_service.listar_para_panel(). Doble clic en una fila abre
-el formulario en modo edición.
-
-Búsqueda en vivo: el campo filtra por coincidencia parcial (contiene)
-en código, nombres y apellidos, sin importar mayúsculas ni tildes.
-"""
 import unicodedata
 import webbrowser
 
@@ -54,7 +40,8 @@ COLUMNAS = [
     "Apellidos",
     "Nombres",
     "Código",
-    "%\nAnterior",
+    "Celular",
+    "Nueva /\nRenovación",
     "Gestión",
     "Horas Becarias",
     "Materias en Orden",
@@ -63,13 +50,25 @@ COLUMNAS = [
     "Estado",
 ]
 
-# Abreviaturas fijas (antes que "…") para los dos badges largos.
-_ABREVIATURAS_FIJAS = {"No cumplió": "No cump.", "En renovación": "En renov."}
+_ABREVIATURAS_FIJAS = {"No cumplió": "No cump.", "En renovación": "En renov.",
+                       "Renovación": "Renov."}
 
-# Variante corta de encabezado (de beymar) cuando la columna queda angosta.
-_ABREVIATURAS_ENCABEZADO = {9: "C. C.", 10: "C. de R."}
+INDICE_COLUMNA_CODIGO = 4
+INDICE_COLUMNA_CELULAR = 5
+INDICE_COLUMNA_CONDICION = 6
+INDICE_COLUMNA_GESTION = 7
+INDICE_COLUMNA_HORAS = 8
+INDICE_COLUMNA_MATERIAS = 9
+INDICE_COLUMNA_CARPETA = 10
+INDICE_COLUMNA_CARTA = 11
+INDICE_COLUMNA_ESTADO = 12
 
-# Margen que se reserva al abreviar badges (acolchado del estilo + aire).
+_ABREVIATURAS_ENCABEZADO = {
+    INDICE_COLUMNA_CONDICION: "N. / R.",
+    INDICE_COLUMNA_CARPETA: "C. C.",
+    INDICE_COLUMNA_CARTA: "C. de R.",
+}
+
 MARGEN_BADGE_PX = 26
 
 ESTILO_BADGE_NEUTRO = (
@@ -77,14 +76,11 @@ ESTILO_BADGE_NEUTRO = (
     "border-radius: 10px; padding: 3px 12px; font-weight: 700;"
 )
 
-# Capa adicional sobre la fila: rojo tenue para requisitos vencidos.
-# Solo tiñe las celdas de texto; los badges conservan sus colores propios.
 FONDO_FILA_VENCIDA = QBrush(QColor("#fecaca"))
 TOOLTIP_VENCIDO = "Requisitos vencidos: complete los flags pendientes"
 
 
 def estilo_estado(estado: str) -> str:
-    """Verde Activo, rojo Baja/Inactivo, ámbar el resto (igual que la ficha)."""
     if estado == "Activo":
         return ESTILO_BADGE_VERDE
     if estado == "Baja/Inactivo":
@@ -93,17 +89,17 @@ def estilo_estado(estado: str) -> str:
 
 
 def _opciones_campo(campo: str) -> list:
-    """Opciones válidas del desplegable: coinciden con lo que usa el sistema."""
     if campo == "estado":
         return list(becario_service.ESTADOS_BECARIO)
+    if campo == "condicion":
+        return list(becario_service.CONDICIONES_SEGUIMIENTO)
     return [True, False]
 
 
 def _texto_opcion(campo: str, valor) -> str:
-    """Etiqueta visible de cada opción (misma que ya mostraban los badges)."""
     if campo == "horas_becarias":
         return "Cumplió" if valor else "No cumplió"
-    if campo == "estado":
+    if campo in ("estado", "condicion"):
         return str(valor)
     return "Sí" if valor else "No"
 
@@ -111,24 +107,23 @@ def _texto_opcion(campo: str, valor) -> str:
 def _estilo_opcion(campo: str, valor) -> str:
     if campo == "estado":
         return estilo_estado(valor)
+    if campo == "condicion":
+        return ESTILO_BADGE_NEUTRO
     return ESTILO_BADGE_VERDE if valor else ESTILO_BADGE_ROJO
 
 TEXTO_BUSQUEDA = "Buscar por código Ej: 23718 o por nombre Beymar Condori Quispe"
 TEXTO_SIN_RESULTADOS = "Ninguna coincidencia"
 
-# Índice de la columna Código en la tabla principal (doble clic = perfil SIAC).
-INDICE_COLUMNA_CODIGO = 4
 URL_PERFIL_SIAC = "https://udelosandes.com/siac/estudiante/informacion_academica/{codigo}/218"
 
 
 def abrir_perfil_siac(codigo: str):
-    """Abre el perfil SIAC del código en el navegador predeterminado."""
     webbrowser.open(URL_PERFIL_SIAC.format(codigo=(codigo or "").strip()))
 
 COLUMNAS_INACTIVOS = ["N.", "Apellidos", "Nombres", "CI", "Código", "Carrera", "", ""]
 
 COLUMNAS_RESPALDO = ["N.", "Carrera", "Apellidos", "Nombres", "Código",
-                     "% Anterior", "Gestión", "Horas Becarias", "Materias en Orden",
+                     "Nueva / Renovación", "Gestión", "Horas Becarias", "Materias en Orden",
                      "C. C.", "C. de R.",
                      "Estado"]
 
@@ -136,7 +131,6 @@ COLUMNAS_INFORMES = ["N.", "Archivo", "Tamaño", "", ""]
 
 
 def _normalizar_texto(texto: str) -> str:
-    """Minúsculas sin tildes para comparar (búsqueda insensible a ambas)."""
     base = unicodedata.normalize("NFKD", texto or "")
     return "".join(c for c in base if not unicodedata.combining(c)).lower()
 
@@ -151,15 +145,10 @@ ESTILO_BADGE_ROJO = (
 
 
 class PanelControlWindow(QMainWindow):
-    """Vista post-login del listado de becarios."""
 
-    # HU-02: abrir formulario en modo "nuevo" / en modo "editar(id)".
     nuevo_becario_solicitado = Signal()
     becario_editar_solicitado = Signal(int)
 
-    # Ítems del sidebar como (etiqueta, página). El orden visual es
-    # independiente del índice de página en el QStackedWidget.
-    # Las opciones futuras (Reportes, Configuración) se agregan aquí en su HU.
     ITEMS_SIDEBAR = [("Panel de Control", 0), ("Respaldos", 2),
                      ("Becarios Inactivos", 1), ("Informes", 3)]
 
@@ -174,10 +163,12 @@ class PanelControlWindow(QMainWindow):
         self._filas_completas: list = []
         self._inactivos_completos: list = []
         self._menu_info: dict = {}
+        self._info_condicion: dict = {}
         self._categoria_filtro: str | None = None
         self._solo_pendientes = False
         self._fecha_limite: str | None = None
         self._estado_filtro: str | None = None
+        self._condicion_filtro: str | None = None
         self._filas_vistas: list = []
         self._pagina_actual = 1
         self._registros_por_pagina = 15
@@ -190,12 +181,10 @@ class PanelControlWindow(QMainWindow):
         self.refrescar()
 
     def showEvent(self, event):
-        """Programa el cálculo con la ventana ya en su tamaño final."""
         super().showEvent(event)
         self._programar_reajuste_columnas()
 
     def _programar_reajuste_columnas(self):
-        """Calcula anchos tras el layout (coalesca redimensionados seguidos)."""
         if self._reajuste_columnas_pendiente:
             return
         self._reajuste_columnas_pendiente = True
@@ -207,9 +196,8 @@ class PanelControlWindow(QMainWindow):
             if self._aplicar_anchos_proporcionales():
                 self._anchos_proporcionales_listos = True
         except RuntimeError:
-            pass  # ventana cerrada antes del ciclo de eventos
+            pass
 
-    # -- layout -----------------------------------------------------------
     def _build_ui(self):
         raiz = QWidget(self)
         layout_raiz = QHBoxLayout(raiz)
@@ -231,7 +219,6 @@ class PanelControlWindow(QMainWindow):
         barra_titulo.addStretch(1)
         self.btn_nuevo = QPushButton("+ Nuevo Becario")
         self.btn_nuevo.setObjectName("nuevo")
-        # HU-02: main.py conecta esta señal con el formulario en modo "nuevo".
         self.btn_nuevo.clicked.connect(self.nuevo_becario_solicitado.emit)
         barra_titulo.addWidget(self.btn_nuevo)
         layout_contenido.addLayout(barra_titulo)
@@ -250,7 +237,6 @@ class PanelControlWindow(QMainWindow):
         barra_busqueda.addLayout(fila_busqueda, 1)
         self.btn_filtrar = QPushButton("Filtrar")
         self.btn_filtrar.setObjectName("filtrar")
-        # HU-06 (+ adelanto HU-07): despliega categorías con conteo y filtra.
         self.btn_filtrar.clicked.connect(self._mostrar_menu_filtrar)
         barra_busqueda.addWidget(self.btn_filtrar)
         self.btn_fecha_limite = QPushButton("Fecha límite")
@@ -263,13 +249,18 @@ class PanelControlWindow(QMainWindow):
         self.btn_estado.setObjectName("estadoFiltro")
         self.btn_estado.clicked.connect(self._mostrar_menu_estado)
         barra_busqueda.addWidget(self.btn_estado)
+
+        self.btn_condicion = QPushButton("Condición")
+        self.btn_condicion.setObjectName("estadoFiltro")
+        self.btn_condicion.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_condicion.clicked.connect(self._mostrar_menu_condicion_filtro)
+        barra_busqueda.addWidget(self.btn_condicion)
         layout_contenido.addLayout(barra_busqueda)
 
         self.tabla = QTableWidget(0, len(COLUMNAS))
         self.tabla.setHorizontalHeaderLabels(COLUMNAS)
         self.tabla.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        # Sin foco: ninguna fila se ve distinta hasta que el usuario la seleccione.
         self.tabla.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.tabla.verticalHeader().setVisible(False)
         self.tabla.setTextElideMode(Qt.TextElideMode.ElideRight)
@@ -278,25 +269,27 @@ class PanelControlWindow(QMainWindow):
         cabecera.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         cabecera.setStretchLastSection(False)
         self.tabla.setColumnWidth(0, 48)
-        self.tabla.setColumnWidth(1, 115)
-        self.tabla.setColumnWidth(2, 150)
-        self.tabla.setColumnWidth(3, 150)
+        self.tabla.setColumnWidth(1, 110)
+        self.tabla.setColumnWidth(2, 110)
+        self.tabla.setColumnWidth(3, 110)
         self.tabla.setColumnWidth(4, 90)
-        self.tabla.setColumnWidth(5, 86)
-        self.tabla.setColumnWidth(6, 92)
-        self.tabla.setColumnWidth(7, 120)
+        self.tabla.setColumnWidth(5, 84)
+        self.tabla.setColumnWidth(6, 86)
+        self.tabla.setColumnWidth(7, 92)
         self.tabla.setColumnWidth(8, 120)
-        self.tabla.setColumnWidth(9, 82)
-        self.tabla.setColumnWidth(10, 92)
-        self.tabla.setColumnWidth(11, 90)
+        self.tabla.setColumnWidth(9, 120)
+        self.tabla.setColumnWidth(10, 82)
+        self.tabla.setColumnWidth(11, 92)
+        self.tabla.setColumnWidth(12, 90)
         self.tabla.installEventFilter(self)
-        # Doble clic abre el becario en modo edición (HU-02, CA-1).
         self.tabla.cellDoubleClicked.connect(self._abrir_editar)
+        self.tabla.cellClicked.connect(self._manejar_clic_celda)
+        self.tabla.viewport().setMouseTracking(True)
+        self.tabla.viewport().installEventFilter(self)
         layout_contenido.addWidget(self.tabla, 1)
 
         self._build_paginador(layout_contenido)
 
-        # Búsqueda en vivo: filtra mientras se escribe (sin Enter ni botón).
         self.txt_busqueda.textChanged.connect(self._al_escribir)
 
         self.paginas = QStackedWidget(raiz)
@@ -308,7 +301,6 @@ class PanelControlWindow(QMainWindow):
         self.setCentralWidget(raiz)
 
     def _build_paginador(self, layout_contenido):
-        """Crea la barra inferior con navegación por páginas para la tabla principal."""
         fila_paginador = QHBoxLayout()
         fila_paginador.setSpacing(10)
         fila_paginador.setContentsMargins(0, 0, 0, 0)
@@ -340,7 +332,6 @@ class PanelControlWindow(QMainWindow):
         layout_contenido.addLayout(fila_paginador)
 
     def _actualizar_paginador(self):
-        """Recalcula páginas, botones y etiqueta informativa para la tabla visible."""
         total_registros = len(self._filas_vistas)
         total_paginas = max(1, (total_registros + self._registros_por_pagina - 1) // self._registros_por_pagina)
         self._pagina_actual = max(1, min(self._pagina_actual, total_paginas))
@@ -387,12 +378,12 @@ class PanelControlWindow(QMainWindow):
             self._render_pagina_actual()
 
     def _render_pagina_actual(self):
-        """Renderiza únicamente la sublista correspondiente a la página actual."""
         total_registros = len(self._filas_vistas)
         if total_registros == 0:
             self.tabla.setRowCount(0)
             self._ids_fila = []
             self._menu_info = {}
+            self._info_condicion = {}
             self._fila_sin_resultados()
             self._actualizar_paginador()
             return
@@ -406,31 +397,35 @@ class PanelControlWindow(QMainWindow):
         self.tabla.setRowCount(0)
         self._ids_fila = []
         self._menu_info = {}
+        self._info_condicion = {}
         for indice_local, fila in enumerate(pagina_actual, start=1):
             fila_real = self.tabla.rowCount()
             self.tabla.insertRow(fila_real)
-            becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo, estado = fila
+            becario_id, carrera, apellidos, nombres, codigo, seg, gestion, real, _tipo, estado, contacto = fila
             self._ids_fila.append(becario_id)
             self._celda_texto(fila_real, 0, str(inicio + indice_local))
             self._celda_texto(fila_real, 1, carrera)
             self._celda_texto(fila_real, 2, apellidos)
             self._celda_texto(fila_real, 3, nombres)
             self._celda_texto(fila_real, 4, codigo)
-            self._celda_texto(fila_real, 5, seg.porcentaje_anterior)
-            self._celda_texto(fila_real, 6, gestion)
-            self._celda_badge_menu(fila_real, 7, becario_id, "horas_becarias",
+            self._celda_texto(fila_real, INDICE_COLUMNA_CELULAR, contacto or "—")
+            self._celda_condicion(
+                fila_real, becario_id, seg.condicion or "Nueva",
+                real.gestion if real is not None else None)
+            self._celda_texto(fila_real, INDICE_COLUMNA_GESTION, gestion)
+            self._celda_badge_menu(fila_real, INDICE_COLUMNA_HORAS, becario_id, "horas_becarias",
                                      seg.horas_becarias,
                                      real.gestion if real is not None else None)
-            self._celda_badge_menu(fila_real, 8, becario_id, "materias_en_orden",
+            self._celda_badge_menu(fila_real, INDICE_COLUMNA_MATERIAS, becario_id, "materias_en_orden",
                                      seg.materias_en_orden,
                                      real.gestion if real is not None else None)
-            self._celda_badge_menu(fila_real, 9, becario_id, "carpeta_cancelada",
+            self._celda_badge_menu(fila_real, INDICE_COLUMNA_CARPETA, becario_id, "carpeta_cancelada",
                                      seg.carpeta_cancelada,
                                      real.gestion if real is not None else None)
-            self._celda_badge_menu(fila_real, 10, becario_id, "carta_renovacion",
+            self._celda_badge_menu(fila_real, INDICE_COLUMNA_CARTA, becario_id, "carta_renovacion",
                                      seg.carta_renovacion,
                                      real.gestion if real is not None else None)
-            self._celda_badge_menu(fila_real, 11, becario_id, "estado", estado, None)
+            self._celda_badge_menu(fila_real, INDICE_COLUMNA_ESTADO, becario_id, "estado", estado, None)
             if becario_service.incumple_requisitos(
                     estado, real if real is not None else seg, self._fecha_limite):
                 self._resaltar_fila_vencida(fila_real)
@@ -441,7 +436,6 @@ class PanelControlWindow(QMainWindow):
         self._actualizar_paginador()
 
     def _construir_pagina_inactivos(self) -> QWidget:
-        """Segunda página: solo Baja/Inactivo, con botón Eliminar por fila."""
         pagina = QWidget()
         layout = QVBoxLayout(pagina)
         layout.setContentsMargins(28, 24, 28, 24)
@@ -460,7 +454,6 @@ class PanelControlWindow(QMainWindow):
             QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.tabla_inactivos, 1)
 
-        # Acción masiva separada de las filas (espacio + alineada a la derecha).
         layout.addSpacing(12)
         fila_masiva = QHBoxLayout()
         fila_masiva.addStretch(1)
@@ -533,7 +526,6 @@ class PanelControlWindow(QMainWindow):
         return lateral
 
     def _construir_pagina_respaldos(self) -> QWidget:
-        """Tercera página: snapshots de gestiones cerradas, solo lectura."""
         pagina = QWidget()
         layout = QVBoxLayout(pagina)
         layout.setContentsMargins(28, 24, 28, 24)
@@ -586,7 +578,6 @@ class PanelControlWindow(QMainWindow):
         return pagina
 
     def _aplicar_filtro_respaldo(self):
-        """Filtra la tabla de respaldos por nombre, apellido o código."""
         texto = (self.txt_busqueda_respaldo.text() or "").strip().lower()
         for fila in range(self.tabla_respaldos.rowCount()):
             item_codigo = self.tabla_respaldos.item(fila, 4)
@@ -604,7 +595,6 @@ class PanelControlWindow(QMainWindow):
             self.tabla_respaldos.setRowHidden(fila, not coincide)
 
     def _cargar_respaldo(self, gestion: str):
-        """Puebla la tabla con el snapshot (celdas de texto y badges fijos)."""
         self.tabla_respaldos.setRowCount(0)
         self.lbl_titulo_respaldo.setText(
             f"Respaldo de {gestion}" if gestion else "Respaldo")
@@ -615,7 +605,7 @@ class PanelControlWindow(QMainWindow):
             self.tabla_respaldos.insertRow(fila)
             for columna, valor in enumerate(
                     [str(i), r.carrera, r.apellidos, r.nombres, r.codigo_estudiante,
-                      r.porcentaje_anterior, r.gestion_ingreso or "—"]):
+                      r.condicion or "—", r.gestion_ingreso or "—"]):
                 item = QTableWidgetItem(valor)
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.tabla_respaldos.setItem(fila, columna, item)
@@ -636,7 +626,6 @@ class PanelControlWindow(QMainWindow):
         self._aplicar_filtro_respaldo()
 
     def _construir_pagina_informes(self) -> QWidget:
-        """Cuarta página: actas generadas en data/informes/, con Abrir/Eliminar."""
         pagina = QWidget()
         layout = QVBoxLayout(pagina)
         layout.setContentsMargins(28, 24, 28, 24)
@@ -666,7 +655,6 @@ class PanelControlWindow(QMainWindow):
 
     @staticmethod
     def _tamano_legible(tamano_bytes: int) -> str:
-        """1234 -> '1,2 KB' (coma decimal, formato local)."""
         if tamano_bytes < 1024:
             return f"{tamano_bytes} B"
         kb = tamano_bytes / 1024
@@ -675,7 +663,6 @@ class PanelControlWindow(QMainWindow):
         return f"{kb / 1024:.1f} MB".replace(".", ",")
 
     def _cargar_informes(self):
-        """Puebla la tabla de informes con Abrir/Eliminar por fila."""
         self.tabla_informes.setRowCount(0)
         for i, info in enumerate(informe_service.listar_informes(), start=1):
             fila = self.tabla_informes.rowCount()
@@ -711,7 +698,6 @@ class PanelControlWindow(QMainWindow):
             self.tabla_informes.setItem(fila, 0, item)
 
     def _crear_informe(self):
-        """Pide N° de acta + nombre y genera el .docx (notifica éxito/error)."""
         dialogo = DialogoNuevoInforme(self)
         if ejecutar_con_overlay(self, dialogo) != DialogoNuevoInforme.DialogCode.Accepted:
             return
@@ -729,12 +715,10 @@ class PanelControlWindow(QMainWindow):
                   "para completar a mano en Word.", tipo="exito")
 
     def _abrir_informe(self, ruta: str):
-        """Abre el .docx con la app predeterminada de Windows."""
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(ruta)):
             mostrar_notificacion(self, "No se pudo abrir el informe.", tipo="error")
 
     def _eliminar_informe(self, nombre: str):
-        """Pide confirmación explícita y elimina el archivo (igual que inactivos)."""
         if not pedir_confirmacion(
                 self, f"¿Eliminar permanentemente el informe {nombre}? "
                        "Esta acción no se puede deshacer."):
@@ -751,16 +735,12 @@ class PanelControlWindow(QMainWindow):
         mostrar_notificacion(self, "Informe eliminado correctamente.", tipo="exito")
 
     def _cambiar_vista(self, indice: int):
-        """Navegación del sidebar (0 = listado, 1 = inactivos, 2 = respaldos, 3 = informes)."""
         self.paginas.setCurrentIndex(indice)
         for boton, (_etiqueta, pagina) in zip(self._botones_sidebar, self.ITEMS_SIDEBAR):
             boton.setObjectName("itemActivo" if pagina == indice else "item")
         self._apply_style()
 
-    # -- datos (fuente real: JOIN becario + seguimiento_becario) ------------
     def refrescar(self):
-        """Recarga ambas vistas (respeta los filtros). El listado principal
-        excluye Baja/Inactivo; esos van a la página de inactivos."""
         self._filas_completas = [
             (b.id, b.carrera, b.apellidos, b.nombres, b.codigo_estudiante,
              seg if seg is not None else SeguimientoBecario(
@@ -768,7 +748,8 @@ class PanelControlWindow(QMainWindow):
              seg.gestion if seg is not None else "—",
              seg,
              b.tipo_beca,
-             b.estado)
+             b.estado,
+             b.contacto)
             for b, seg in becario_service.listar_para_panel()
             if b.estado != "Baja/Inactivo"
         ]
@@ -795,12 +776,10 @@ class PanelControlWindow(QMainWindow):
         self._cargar_informes()
 
     def _al_escribir(self, texto: str):
-        """Filtra en tiempo real con cada tecla (coincidencia parcial)."""
         self.aplicar_filtro(texto)
         self._filtrar_inactivos(texto)
 
     def _filtrar_inactivos(self, texto: str):
-        """Mismo criterio parcial sobre código/nombres/apellidos (sin categoría)."""
         consulta = _normalizar_texto(texto.strip())
         if not consulta:
             self._cargar_inactivos(list(self._inactivos_completos))
@@ -815,7 +794,6 @@ class PanelControlWindow(QMainWindow):
         ])
 
     def _cargar_inactivos(self, filas):
-        """Puebla la tabla de inactivos. `filas`: (id, apellidos, nombres, ci, codigo, carrera)."""
         self.tabla_inactivos.setRowCount(0)
         self.btn_eliminar_todos.setVisible(len(filas) > 0)
         for i, (becario_id, apellidos, nombres, ci, codigo, carrera) in enumerate(filas, start=1):
@@ -852,7 +830,6 @@ class PanelControlWindow(QMainWindow):
             self.tabla_inactivos.setItem(fila, 0, item)
 
     def _reactivar_becario(self, becario_id: int, nombre: str):
-        """Vuelve a 'En renovación' (igual que un becario nuevo). Sin confirmación."""
         try:
             becario_service.actualizar_estado(becario_id, "En renovación")
         except Exception as e:
@@ -863,10 +840,6 @@ class PanelControlWindow(QMainWindow):
             self, f"{nombre} vuelve a estar activo (En renovación).", tipo="exito")
 
     def _eliminar_todos(self):
-        """Vacía TODOS los inactivos (conjunto completo, aunque haya texto filtrando).
-
-        El mensaje dice el N exacto para que no haya sorpresas.
-        """
         total = len(self._inactivos_completos)
         if total == 0:
             return
@@ -884,7 +857,6 @@ class PanelControlWindow(QMainWindow):
             self, f"Se eliminaron {eliminados} becarios inactivos.", tipo="exito")
 
     def _eliminar_becario(self, becario_id: int, nombre: str):
-        """Pide confirmación explícita y elimina (becario + seguimientos)."""
         if not pedir_confirmacion(
                 self, f"¿Eliminar permanentemente a {nombre}? Esta acción no se puede deshacer."):
             return
@@ -897,33 +869,23 @@ class PanelControlWindow(QMainWindow):
         mostrar_notificacion(self, "Becario eliminado correctamente.", tipo="exito")
 
     def _fila_es_pendiente(self, fila) -> bool:
-        """True si la fila (tupla de _filas_completas) incumple requisitos.
-
-        Evalúa sobre la caché, sin consultas: usa el seguimiento real si
-        existe, si no el de exhibición. Sin fecha límite nunca es pendiente.
-        """
         (_bid, _carrera, _ape, _nom, _cod, seg_mostrar, _gestion,
-         seg_real, _tipo, estado) = fila
+         seg_real, _tipo, estado, _contacto) = fila
         return becario_service.incumple_requisitos(
             estado, seg_real if seg_real is not None else seg_mostrar,
             self._fecha_limite)
 
     def contar_pendientes(self) -> int:
-        """Cuántos vencidos hay en el listado (para el menú Filtrar)."""
         return sum(1 for fila in self._filas_completas if self._fila_es_pendiente(fila))
 
     def aplicar_filtro(self, texto: str):
-        """Aplica texto, categoría, estado y pendientes (intersección acumulativa).
-
-        El código filtra por "empieza con"; nombres/apellidos por "contiene".
-        Vacío + "Todas" = todo. "Todas" limpia categoría y pendientes, y
-        conserva el texto escrito.
-        """
         consulta = _normalizar_texto(texto.strip())
         categoria = self._categoria_filtro
         estado = self._estado_filtro
+        condicion = self._condicion_filtro
         solo_pendientes = self._solo_pendientes
-        if not consulta and categoria is None and estado is None and not solo_pendientes:
+        if not consulta and categoria is None and estado is None \
+                and condicion is None and not solo_pendientes:
             self._filas_vistas = list(self._filas_completas)
             self._pagina_actual = 1
             self._render_pagina_actual()
@@ -938,37 +900,46 @@ class PanelControlWindow(QMainWindow):
                 or consulta in _normalizar_texto(f"{fila[2]} {fila[3]}"))
             and (categoria is None or fila[8] == categoria)
             and (estado is None or fila[9] == estado)
+            and (condicion is None or self._condicion_de_fila(fila) == condicion)
             and (not solo_pendientes or self._fila_es_pendiente(fila))
         ]
         self._filas_vistas = filtradas
         self._pagina_actual = 1
         self._render_pagina_actual()
 
+    @staticmethod
+    def _condicion_de_fila(fila) -> str:
+        seg_real, seg_mostrar = fila[7], fila[5]
+        seg = seg_real if seg_real is not None else seg_mostrar
+        return (seg.condicion or "") if seg is not None else ""
+
     def cargar_seguimientos(self, filas):
-        """Puebla la tabla desde la página actual del conjunto filtrado."""
         self._filas_vistas = list(filas)
         self._pagina_actual = 1
         self._render_pagina_actual()
 
     def _resaltar_fila_vencida(self, fila_visible: int):
-        """Tiñe las celdas de texto de la fila (los badges no se tocan)."""
-        for columna in range(INDICE_COLUMNA_CODIGO + 3):  # 0..6: solo texto
+        for columna in range(INDICE_COLUMNA_GESTION + 1):
             item = self.tabla.item(fila_visible, columna)
             if item is not None:
                 item.setBackground(FONDO_FILA_VENCIDA)
+                if columna == INDICE_COLUMNA_CONDICION:
+                    continue
                 item.setToolTip(TOOLTIP_VENCIDO)
 
     def _quitar_resaltado_fila(self, fila_visible: int):
-        """Devuelve la fila a su fondo normal (tras cumplir los requisitos)."""
-        for columna in range(INDICE_COLUMNA_CODIGO + 3):
+        for columna in range(INDICE_COLUMNA_GESTION + 1):
             item = self.tabla.item(fila_visible, columna)
             if item is not None:
                 item.setBackground(QBrush())
-                item.setToolTip("")
+                if columna == INDICE_COLUMNA_CONDICION:
+                    info = self._info_condicion.get(fila_visible)
+                    item.setToolTip(
+                        f"{info['completo']} — Clic para cambiar" if info else "")
+                else:
+                    item.setToolTip(item.text())
 
     def _fila_sin_resultados(self):
-        """Fila fantasma dentro de la tabla: una celda fusionada (colspan)
-        con el aviso centrado, en el área blanca de las filas."""
         fila = self.tabla.rowCount()
         self.tabla.insertRow(fila)
         self.tabla.setSpan(fila, 0, 1, len(COLUMNAS))
@@ -985,6 +956,7 @@ class PanelControlWindow(QMainWindow):
     def _celda_texto(self, fila: int, columna: int, texto: str):
         item = QTableWidgetItem(texto)
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        item.setToolTip(texto)
         self.tabla.setItem(fila, columna, item)
 
     def _celda_badge(self, fila: int, columna: int, texto: str, positivo: bool):
@@ -997,7 +969,6 @@ class PanelControlWindow(QMainWindow):
 
     def _celda_badge_menu(self, fila: int, columna: int, becario_id: int,
                             campo: str, valor_actual, gestion: str | None):
-        """Badge clickeable: mano, tooltip y desplegable con opciones válidas."""
         etiqueta = QLabel()
         etiqueta.setAlignment(Qt.AlignmentFlag.AlignCenter)
         etiqueta.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1010,8 +981,74 @@ class PanelControlWindow(QMainWindow):
         self._pintar_badge(etiqueta, campo, valor_actual)
         self.tabla.setCellWidget(fila, columna, etiqueta)
 
+    def _celda_condicion(self, fila: int, becario_id: int,
+                           valor_actual: str, gestion: str | None):
+        completo = str(valor_actual or "Nueva")
+        item = QTableWidgetItem(self._texto_visible_badge(
+            INDICE_COLUMNA_CONDICION, completo, self.tabla.font()))
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        item.setToolTip(f"{completo} — Clic para cambiar")
+        self.tabla.setItem(fila, INDICE_COLUMNA_CONDICION, item)
+        self._info_condicion[fila] = {
+            "becario_id": becario_id, "valor": completo,
+            "gestion": gestion, "completo": completo,
+        }
+
+    def _manejar_clic_celda(self, fila: int, columna: int):
+        if columna != INDICE_COLUMNA_CONDICION:
+            return
+        if not 0 <= fila < len(self._ids_fila):
+            return
+        self._mostrar_menu_condicion(fila)
+
+    def _mostrar_menu_condicion(self, fila: int):
+        info = self._info_condicion.get(fila)
+        if info is None:
+            return
+        menu = QMenu(self)
+        menu.setObjectName("menuFiltrar")
+        for opcion in _opciones_campo("condicion"):
+            accion = menu.addAction(_texto_opcion("condicion", opcion))
+            accion.setCheckable(True)
+            accion.setChecked(opcion == info["valor"])
+            accion.triggered.connect(
+                lambda checked=False, o=opcion: self._elegir_condicion(fila, o)
+            )
+        menu.exec(QCursor.pos())
+
+    def _elegir_condicion(self, fila: int, opcion: str):
+        info = self._info_condicion.get(fila)
+        if info is None:
+            return
+        if opcion == info["valor"]:
+            return
+        if info.get("gestion") is None or info.get("gestion") == "—":
+            self.refrescar()
+            return
+        try:
+            becario_service.actualizar_condicion(
+                info["becario_id"], info["gestion"], opcion)
+        except Exception as e:
+            mostrar_notificacion(self, f"No se pudo guardar el cambio: {e}", tipo="error")
+            return
+        if self._actualizar_cache_campo(info["becario_id"], "condicion", opcion):
+            info["valor"] = opcion
+            info["completo"] = opcion
+            if self._condicion_filtro is not None and opcion != self._condicion_filtro:
+                self._filas_vistas = [f for f in self._filas_vistas
+                                      if f[0] != info["becario_id"]]
+                self._render_pagina_actual()
+                return
+            item = self.tabla.item(fila, INDICE_COLUMNA_CONDICION)
+            if item is not None:
+                item.setText(self._texto_visible_badge(
+                    INDICE_COLUMNA_CONDICION, opcion, self.tabla.font()))
+                item.setToolTip(f"{opcion} — Clic para cambiar")
+            self._tras_cambio_flag(info["becario_id"])
+        else:
+            self.refrescar()
+
     def _texto_visible_badge(self, columna: int, completo: str, fuente) -> str:
-        """Completo si cabe; si no, abreviatura fija; "…" solo al final."""
         disponible = max(20, self.tabla.columnWidth(columna) - MARGEN_BADGE_PX)
         metricas = QFontMetrics(fuente)
         if metricas.horizontalAdvance(completo) <= disponible:
@@ -1022,7 +1059,6 @@ class PanelControlWindow(QMainWindow):
         return metricas.elidedText(completo, Qt.TextElideMode.ElideRight, disponible)
 
     def _pintar_badge(self, etiqueta: QLabel, campo: str, valor):
-        """Texto (abreviado si no cabe) + estilo + tooltip con valor completo."""
         info = self._menu_info.get(etiqueta, {})
         completo = _texto_opcion(campo, valor)
         info["valor"] = valor
@@ -1033,40 +1069,53 @@ class PanelControlWindow(QMainWindow):
         etiqueta.setToolTip(f"{completo} — Clic para cambiar")
 
     def _reabreviar_badges(self):
-        """Re-abrevia los badges al ancho actual (tras poblar o redimensionar)."""
         for etiqueta, info in self._menu_info.items():
             etiqueta.setText(self._texto_visible_badge(
                 info.get("columna", 0), info.get("completo", ""), etiqueta.font()))
+        for fila, info in self._info_condicion.items():
+            item = self.tabla.item(fila, INDICE_COLUMNA_CONDICION)
+            if item is not None:
+                item.setText(self._texto_visible_badge(
+                    INDICE_COLUMNA_CONDICION, info.get("completo", ""),
+                    self.tabla.font()))
 
     def _aplicar_anchos_proporcionales(self) -> bool:
-        """Fija anchos manejados por código para evitar cortes y bloquear el arrastre manual."""
         base = max(0, self.tabla.viewport().width())
         if base <= 0:
             return False
-        anchos = [48, 115, 150, 150, 90, 86, 92, 120, 120, 82, 92, 90]
+        anchos = [48, 110, 110, 110, 90, 84, 86, 92, 120, 120, 82, 92, 90]
         if sum(anchos) > base:
             exceso = sum(anchos) - base
-            # Se reducen primero los segmentos menos críticos para mantener
-            # los encabezados largos legibles sin permitir cambios manuales.
-            columnas_reducibles = [1, 2, 3, 5, 6, 9, 10, 11]
-            while exceso > 0 and columnas_reducibles:
-                for idx in columnas_reducibles:
-                    if anchos[idx] > 36:
-                        anchos[idx] -= 2
-                        exceso -= 2
-                        if exceso <= 0:
-                            break
-                if exceso <= 0:
-                    break
-                columnas_reducibles = [i for i in columnas_reducibles if anchos[i] > 36]
+            exceso = self._encoger_columnas(anchos, exceso, [2, 3], 48)
+            exceso = self._encoger_columnas(anchos, exceso, [1], 56)
+            if exceso > 0:
+                exceso = self._encoger_columnas(
+                    anchos, exceso,
+                    [INDICE_COLUMNA_CONDICION, INDICE_COLUMNA_GESTION,
+                     INDICE_COLUMNA_CARPETA, INDICE_COLUMNA_CARTA,
+                     INDICE_COLUMNA_ESTADO], 36)
         for i, ancho in enumerate(anchos):
             self.tabla.setColumnWidth(i, ancho)
         self._ajustar_encabezados_al_ancho()
         self._reabreviar_badges()
         return True
 
+    @staticmethod
+    def _encoger_columnas(anchos: list, exceso: int, indices: list,
+                          piso: int) -> int:
+        pendientes = [i for i in indices if anchos[i] > piso]
+        while exceso > 0 and pendientes:
+            for idx in pendientes:
+                if anchos[idx] > piso:
+                    paso = min(2, exceso, anchos[idx] - piso)
+                    anchos[idx] -= paso
+                    exceso -= paso
+                    if exceso <= 0:
+                        break
+            pendientes = [i for i in pendientes if anchos[i] > piso]
+        return exceso
+
     def _ajustar_encabezados_al_ancho(self):
-        """Título completo en dos líneas; corto ("C. C.") solo si no cabe."""
         fuente = QFontMetrics(self.tabla.horizontalHeader().font())
         for columna, corto in _ABREVIATURAS_ENCABEZADO.items():
             largo = COLUMNAS[columna]
@@ -1080,8 +1129,18 @@ class PanelControlWindow(QMainWindow):
 
     def eventFilter(self, obj, event):
         if obj is self.tabla and event.type() == QEvent.Type.Resize:
-            # Diferido: aquí el viewport aún tiene el tamaño anterior.
             self._programar_reajuste_columnas()
+            return False
+        if (obj is self.tabla.viewport()
+                and event.type() == QEvent.Type.MouseMove):
+            posicion = event.position().toPoint()
+            indice = self.tabla.indexAt(posicion)
+            if (indice.isValid()
+                    and indice.column() == INDICE_COLUMNA_CONDICION
+                    and 0 <= indice.row() < len(self._ids_fila)):
+                self.tabla.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+            else:
+                self.tabla.viewport().setCursor(Qt.CursorShape.ArrowCursor)
             return False
         if (event.type() == QEvent.Type.MouseButtonRelease
                 and event.button() == Qt.MouseButton.LeftButton
@@ -1091,11 +1150,9 @@ class PanelControlWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     def _construir_menu_opciones(self, etiqueta: QLabel):
-        """Arma el desplegable (sin mostrarlo): una acción por opción válida,
-        marcada la actual. Cerrar sin elegir no cambia nada."""
         info = self._menu_info.get(etiqueta)
         menu = QMenu(self)
-        menu.setObjectName("menuFiltrar")  # reutiliza el estilo del dropdown
+        menu.setObjectName("menuFiltrar")
         if info is None:
             return menu
         for opcion in _opciones_campo(info["campo"]):
@@ -1111,14 +1168,6 @@ class PanelControlWindow(QMainWindow):
         self._construir_menu_opciones(etiqueta).exec(QCursor.pos())
 
     def _elegir_opcion(self, etiqueta: QLabel, opcion):
-        """Guarda la opción elegida y refleja el cambio sin recargar todo.
-
-        Vía rápida: actualiza la celda en su sitio (texto + estilo
-        idénticos) y la caché de filas. Solo el pase a "Baja/Inactivo"
-        toca la página de inactivos (quitar la fila aquí y recargarla
-        allá). Sin cambios de aspecto ni de comportamiento del menú:
-        cerrar sin elegir no dispara esto y conserva el valor anterior.
-        """
         info = self._menu_info.get(etiqueta)
         if info is None:
             return
@@ -1134,6 +1183,8 @@ class PanelControlWindow(QMainWindow):
                 becario_service.actualizar_carpeta_cancelada(bid, info["gestion"], opcion)
             elif campo == "carta_renovacion":
                 becario_service.actualizar_carta_renovacion(bid, info["gestion"], opcion)
+            elif campo == "condicion":
+                becario_service.actualizar_condicion(bid, info["gestion"], opcion)
             else:
                 becario_service.actualizar_estado(bid, opcion)
         except Exception as e:
@@ -1143,12 +1194,11 @@ class PanelControlWindow(QMainWindow):
 
     def _reflejar_cambio_en_listado(self, etiqueta: QLabel, campo: str,
                                     becario_id: int, nuevo_valor, info: dict):
-        """Actualiza la celda/fila afectada sin reconstruir la tabla."""
         if campo == "estado":
             self._reflejar_cambio_estado(etiqueta, becario_id, nuevo_valor)
             return
         if info.get("gestion") is None or info.get("gestion") == "—":
-            self.refrescar()  # caso raro sin seguimiento: recarga completa
+            self.refrescar()
             return
         if self._actualizar_cache_campo(becario_id, campo, nuevo_valor):
             self._pintar_badge(etiqueta, campo, nuevo_valor)
@@ -1157,40 +1207,35 @@ class PanelControlWindow(QMainWindow):
             self.refrescar()
 
     def _actualizar_cache_campo(self, becario_id: int, campo: str, nuevo_valor) -> bool:
-        """Actualiza el seguimiento en caché. False si el becario no está."""
         for fila in self._filas_completas:
             if fila[0] == becario_id:
                 for seg in (fila[5], fila[7]):
                     if seg is not None:
-                        setattr(seg, campo, bool(nuevo_valor))
+                        setattr(seg, campo, nuevo_valor if campo == "condicion"
+                                else bool(nuevo_valor))
                 return True
         return False
 
-    def reflejar_cambio_externo(self, becario_id: int, campo: str, nuevo_valor: bool):
-        """Refleja un cambio guardado desde la ficha (misma vía rápida, sin recargar).
-
-        Solo los 4 campos de seguimiento llegan aquí (la ficha no edita
-        estado); inactivos y respaldos no dependen de ellos.
-        """
+    def reflejar_cambio_externo(self, becario_id: int, campo: str, nuevo_valor):
         if campo not in ("horas_becarias", "materias_en_orden",
-                         "carpeta_cancelada", "carta_renovacion"):
+                         "carpeta_cancelada", "carta_renovacion", "condicion"):
+            return
+        if campo == "condicion" and nuevo_valor not in ("Nueva", "Renovación"):
             return
         if not self._actualizar_cache_campo(becario_id, campo, nuevo_valor):
             return
+        if campo == "condicion" and self._condicion_filtro is not None \
+                and nuevo_valor != self._condicion_filtro:
+            self._filas_vistas = [f for f in self._filas_vistas if f[0] != becario_id]
+            self._render_pagina_actual()
+            return
         for etiqueta, info in self._menu_info.items():
             if info.get("becario_id") == becario_id and info.get("campo") == campo:
-                self._pintar_badge(etiqueta, campo, bool(nuevo_valor))
+                self._pintar_badge(etiqueta, campo, nuevo_valor)
                 break
         self._tras_cambio_flag(becario_id)
 
     def _tras_cambio_flag(self, becario_id: int):
-        """Reevalúa el vencimiento tras marcar un flag, sin recarga completa.
-
-        Si sigue pendiente, asegura el resaltado; si dejó de serlo, lo
-        quita; y si la vista está filtrada en "Pendientes", la fila sale
-        de la vista (igual que un pase a Baja/Inactivo). Respeta la
-        paginación: purga de _filas_vistas y re-renderiza la página.
-        """
         indice_cache = next(
             (i for i, fila in enumerate(self._filas_completas) if fila[0] == becario_id), None)
         if indice_cache is None:
@@ -1209,7 +1254,6 @@ class PanelControlWindow(QMainWindow):
                 self._render_pagina_actual()
 
     def _reflejar_cambio_estado(self, etiqueta: QLabel, becario_id: int, nuevo_estado: str):
-        """Refleja el cambio de estado: badge en sitio, o salida a inactivos."""
         indice_cache = next(
             (i for i, fila in enumerate(self._filas_completas) if fila[0] == becario_id), None)
         if indice_cache is None:
@@ -1224,7 +1268,7 @@ class PanelControlWindow(QMainWindow):
         fila = self._filas_completas[indice_cache]
         self._filas_completas[indice_cache] = (
             fila[0], fila[1], fila[2], fila[3], fila[4], fila[5],
-            fila[6], fila[7], fila[8], nuevo_estado)
+            fila[6], fila[7], fila[8], nuevo_estado, fila[10])
         if self._estado_filtro is not None and nuevo_estado != self._estado_filtro:
             self._filas_vistas = [f for f in self._filas_vistas if f[0] != becario_id]
             self._render_pagina_actual()
@@ -1232,21 +1276,20 @@ class PanelControlWindow(QMainWindow):
         self._pintar_badge(etiqueta, "estado", nuevo_estado)
 
     def _indice_visible_de_becario(self, becario_id: int) -> int | None:
-        """Fila visible del becario en la tabla (None si el filtro la oculta)."""
         try:
             return self._ids_fila.index(becario_id)
         except ValueError:
             return None
 
     def _olvidar_badges_de_fila(self, fila_visible: int):
-        """Limpia el registro del menú de los 5 badges de la fila eliminada."""
-        for columna in (7, 8, 9, 10, 11):
+        for columna in (INDICE_COLUMNA_HORAS, INDICE_COLUMNA_MATERIAS,
+                        INDICE_COLUMNA_CARPETA, INDICE_COLUMNA_CARTA,
+                        INDICE_COLUMNA_ESTADO):
             insignia = self.tabla.cellWidget(fila_visible, columna)
             if insignia in self._menu_info:
                 del self._menu_info[insignia]
 
     def _recargar_inactivos(self):
-        """Actualiza solo la página de inactivos (barato: 1 consulta + filtro)."""
         self._inactivos_completos = [
             (b.id, b.apellidos, b.nombres, b.ci, b.codigo_estudiante, b.carrera)
             for b, _seg in becario_service.listar_inactivos()
@@ -1254,26 +1297,14 @@ class PanelControlWindow(QMainWindow):
         self._filtrar_inactivos(self.txt_busqueda.text())
 
     def _mostrar_menu_filtrar(self):
-        """HU-06 (conteo) + funcionalidad adelantada de HU-07 (filtro por categoría).
-
-        El botón "Filtrar" cubre ambos: el dropdown lista cada categoría con
-        su conteo real, y elegir una filtra la tabla (combinado con el texto).
-        """
         menu = self._construir_menu_filtrar()
         menu.exec(self.btn_filtrar.mapToGlobal(self.btn_filtrar.rect().bottomLeft()))
 
     def _construir_menu_filtrar(self) -> QMenu:
-        """Arma el dropdown con conteos frescos de la BD (se recalcula al abrir).
-
-        Regla HU-06: la suma por categoría siempre cuadra con "Todas".
-        Si algún becario queda sin tipo (''), no desaparece del conteo:
-        aparece la opción "Sin categoría (N)" que filtra tipo_beca vacío.
-        "Pendientes (N)" filtra solo requisitos vencidos (fecha límite manual).
-        """
         menu = QMenu(self)
         menu.setObjectName("menuFiltrar")
         conteos = becario_service.contar_becarios_por_categoria()
-        total = len(self._filas_completas)  # todas las filas, incluso sin categoría
+        total = len(self._filas_completas)
         accion_todas = menu.addAction(f"Todas las categorías ({total})")
         accion_todas.setCheckable(True)
         accion_todas.setChecked(self._categoria_filtro is None and not self._solo_pendientes)
@@ -1301,11 +1332,12 @@ class PanelControlWindow(QMainWindow):
         return menu
 
     def _elegir_categoria(self, categoria: str | None):
-        """Fija el filtro de categoría ("Todas" lo limpia, conserva el texto)."""
         self._categoria_filtro = categoria
         self._solo_pendientes = False
         if categoria is None:
             etiqueta = "Filtrar"
+            self._condicion_filtro = None
+            self.btn_condicion.setText("Condición")
         elif categoria == "":
             etiqueta = "Filtrar: Sin categoría"
         else:
@@ -1314,14 +1346,12 @@ class PanelControlWindow(QMainWindow):
         self.aplicar_filtro(self.txt_busqueda.text())
 
     def _elegir_pendientes(self):
-        """Filtra solo vencidos (exclusivo: limpia la categoría, conserva el texto)."""
         self._solo_pendientes = True
         self._categoria_filtro = None
         self.btn_filtrar.setText("Filtrar: Pendientes")
         self.aplicar_filtro(self.txt_busqueda.text())
 
     def _definir_fecha_limite(self):
-        """Abre el diálogo de fecha límite; al guardar refresca y notifica."""
         dialogo = DialogoFechaLimite(self, fecha_actual=self._fecha_limite)
         if ejecutar_con_overlay(self, dialogo) != DialogoFechaLimite.DialogCode.Accepted:
             return
@@ -1340,12 +1370,10 @@ class PanelControlWindow(QMainWindow):
                       f"({self.contar_pendientes()} pendientes).", tipo="exito")
 
     def _mostrar_menu_estado(self):
-        """Menú de estado con conteos dinámicos y combinado con otros filtros."""
         menu = self._construir_menu_estado()
         menu.exec(self.btn_estado.mapToGlobal(self.btn_estado.rect().bottomLeft()))
 
     def _construir_menu_estado(self) -> QMenu:
-        """Arma las opciones de estado con cantidades calculadas sobre el conjunto actual."""
         menu = QMenu(self)
         menu.setObjectName("menuFiltrar")
         total = len(self._filas_completas)
@@ -1358,7 +1386,7 @@ class PanelControlWindow(QMainWindow):
             if valor is None:
                 cantidad = total
             else:
-                cantidad = sum(1 for _, _, _, _, _, _, _, _, _, estado in self._filas_completas if estado == valor)
+                cantidad = sum(1 for _, _, _, _, _, _, _, _, _, estado, _ in self._filas_completas if estado == valor)
             accion = menu.addAction(f"{etiqueta} ({cantidad})")
             accion.setCheckable(True)
             accion.setChecked(self._estado_filtro == valor)
@@ -1368,7 +1396,6 @@ class PanelControlWindow(QMainWindow):
         return menu
 
     def _elegir_estado(self, estado: str | None):
-        """Fija el filtro de estado y vuelve a aplicar el conjunto de filtros."""
         self._estado_filtro = estado
         if estado is None:
             etiqueta = "Estado"
@@ -1377,15 +1404,50 @@ class PanelControlWindow(QMainWindow):
         self.btn_estado.setText(etiqueta)
         self.aplicar_filtro(self.txt_busqueda.text())
 
+    def _mostrar_menu_condicion_filtro(self):
+        menu = self._construir_menu_condicion_filtro()
+        menu.exec(self.btn_condicion.mapToGlobal(self.btn_condicion.rect().bottomLeft()))
+
+    def _construir_menu_condicion_filtro(self) -> QMenu:
+        menu = QMenu(self)
+        menu.setObjectName("menuFiltrar")
+        total = len(self._filas_completas)
+        nuevas = sum(1 for fila in self._filas_completas
+                     if self._condicion_de_fila(fila) == "Nueva")
+        renovacion = sum(1 for fila in self._filas_completas
+                         if self._condicion_de_fila(fila) == "Renovación")
+        for valor, etiqueta, cantidad in (
+                (None, "Todos", total),
+                ("Nueva", "Nuevos", nuevas),
+                ("Renovación", "Renovación", renovacion)):
+            accion = menu.addAction(f"{etiqueta} ({cantidad})")
+            accion.setCheckable(True)
+            accion.setChecked(self._condicion_filtro == valor)
+            accion.triggered.connect(
+                lambda checked=False, v=valor: self._elegir_condicion_filtro(v)
+            )
+        return menu
+
+    def _elegir_condicion_filtro(self, condicion: str | None):
+        self._condicion_filtro = condicion
+        if condicion is None:
+            etiqueta = "Condición"
+        elif condicion == "Nueva":
+            etiqueta = "Condición: Nuevos"
+        else:
+            etiqueta = "Condición: Renovación"
+        self.btn_condicion.setText(etiqueta)
+        self.aplicar_filtro(self.txt_busqueda.text())
+
     def _abrir_editar(self, fila: int, columna: int):
-        """Doble clic en una fila: columna Código abre solo el SIAC;
-        el resto abre la ventana de editar (HU-02)."""
         if not 0 <= fila < len(self._ids_fila):
             return
         if columna == INDICE_COLUMNA_CODIGO:
             item = self.tabla.item(fila, INDICE_COLUMNA_CODIGO)
             if item is not None:
                 abrir_perfil_siac(item.text())
+            return
+        if columna == INDICE_COLUMNA_CONDICION:
             return
         self.becario_editar_solicitado.emit(self._ids_fila[fila])
 
@@ -1504,7 +1566,6 @@ class PanelControlWindow(QMainWindow):
                 gridline-color: {theme.BORDES_TABLA}; font-size: 12px;
                 border: 1px solid {theme.BORDES_TABLA}; border-radius: 8px;
             }}
-            QTableWidget::item {{ background-color: {theme.FONDO_TABLA}; border: 0; }}
             QTableWidget::item:hover {{ background-color: {theme.FONDO_HOVER}; }}
             QTableWidget::item:selected {{ background-color: #EAF7D9; color: {theme.TEXTO_OSCURO}; }}
             QHeaderView::section {{

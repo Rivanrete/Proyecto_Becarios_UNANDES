@@ -1,17 +1,3 @@
-"""Formulario Nuevo / Editar Becario — HU-02 (un solo formulario, no wizard).
-
-Se muestra como modal INTEGRADO al Panel de Control: QDialog sin marco
-nativo (FramelessWindowHint) con fondo transparente; solo se pinta la
-tarjeta. Quien lo instancia (main._abrir_formulario) pone detrás un
-overlay semitransparente sobre la ventana principal y centra el diálogo.
-Sin barra de título del SO; el cierre va en la ✕ propia y en "Cancelar"
-(o tecla Esc).
-
-Modo "nuevo": BecarioFormWindow(parent) con campos vacíos.
-Modo "editar": BecarioFormWindow(parent, becario_id=...) precargado.
-Toda validación y duplicados pasan por becario_service; aquí solo se
-muestran (error inline estilo login, éxito con diálogo de confirmación).
-"""
 from PySide6.QtCore import Qt, QRegularExpression
 from PySide6.QtGui import QRegularExpressionValidator
 from PySide6.QtWidgets import (
@@ -35,15 +21,11 @@ from app.ui.dialogo_base import DialogoBase
 
 class BecarioFormWindow(DialogoBase):
     def __init__(self, parent=None, becario_id: int | None = None):
-        # Sin marco nativo: ver DialogoBase (frameless, no modal).
-        # El cierre es X / Cancelar / Esc / clic fuera (overlay).
         super().__init__(parent, modal=False)
         self.becario_id = becario_id
         self._modo_edicion = becario_id is None
         self._snapshot_original: dict = {}
         self._controles_editables = []
-        # main.py lee este mensaje tras accept() y lo muestra con la
-        # notificación propia del sistema (sin QMessageBox nativo).
         self.mensaje_exito: str | None = None
         self.setWindowTitle(
             "Ficha del Becario" if becario_id is not None else "Nuevo Becario"
@@ -90,8 +72,6 @@ class BecarioFormWindow(DialogoBase):
 
         form = QFormLayout()
         form.setSpacing(10)
-        # Solo enteros positivos: no acepta letras, espacios ni caracteres
-        # especiales. La BD sigue guardando TEXT, pero el input queda restringido.
         validador_enteros_positivos = QRegularExpressionValidator(
             QRegularExpression("^[1-9][0-9]*$"), card)
         validador_contacto = QRegularExpressionValidator(
@@ -119,6 +99,10 @@ class BecarioFormWindow(DialogoBase):
         self.cmb_tipo.setMaxVisibleItems(self.cmb_tipo.count())
         self.cmb_tipo.setPlaceholderText("Seleccione un tipo de beca")
         self.cmb_tipo.setCurrentIndex(-1)
+        self.cmb_condicion = QComboBox(card)
+        self.cmb_condicion.addItems(list(becario_service.CONDICIONES_SEGUIMIENTO))
+        self.cmb_condicion.setPlaceholderText("Seleccione condición")
+        self.cmb_condicion.setCurrentIndex(-1)
         self.cmb_ingreso = QComboBox(card)
         if self.becario_id is None:
             for gestion in becario_service.gestiones_ingreso_nuevo():
@@ -141,6 +125,7 @@ class BecarioFormWindow(DialogoBase):
             self.txt_codigo,
             self.cmb_carrera,
             self.cmb_tipo,
+            self.cmb_condicion,
             self.cmb_ingreso,
             self.txt_contacto,
         ):
@@ -151,6 +136,7 @@ class BecarioFormWindow(DialogoBase):
         form.addRow("Código:", self.txt_codigo)
         form.addRow("Carrera:", self.cmb_carrera)
         form.addRow("Tipo de Beca:", self.cmb_tipo)
+        form.addRow("Condición:", self.cmb_condicion)
         form.addRow("Gestión de ingreso:", self.cmb_ingreso)
         form.addRow("Contacto:", self.txt_contacto)
         layout.addLayout(form)
@@ -197,6 +183,10 @@ class BecarioFormWindow(DialogoBase):
         indice_tipo = self.cmb_tipo.findText(becario.tipo_beca)
         if indice_tipo >= 0:
             self.cmb_tipo.setCurrentIndex(indice_tipo)
+        condicion = becario_service.obtener_condicion_actual(self.becario_id)
+        indice_condicion = self.cmb_condicion.findText(condicion)
+        if indice_condicion >= 0:
+            self.cmb_condicion.setCurrentIndex(indice_condicion)
         indice_ingreso = self.cmb_ingreso.findData(becario.gestion_ingreso or "")
         if indice_ingreso < 0 and becario.gestion_ingreso:
             self.cmb_ingreso.insertItem(
@@ -217,6 +207,7 @@ class BecarioFormWindow(DialogoBase):
             "codigo_estudiante": self.txt_codigo.text(),
             "carrera": self.cmb_carrera.currentData() or self.cmb_carrera.currentText(),
             "tipo_beca": self.cmb_tipo.currentText(),
+            "condicion": self.cmb_condicion.currentText(),
             "gestion_ingreso": self.cmb_ingreso.currentData() or "",
             "contacto": self.txt_contacto.text(),
         }
@@ -236,6 +227,10 @@ class BecarioFormWindow(DialogoBase):
         indice_tipo = self.cmb_tipo.findText(tipo)
         if indice_tipo >= 0:
             self.cmb_tipo.setCurrentIndex(indice_tipo)
+        condicion = self._snapshot_original.get("condicion", "")
+        indice_condicion = self.cmb_condicion.findText(condicion)
+        if indice_condicion >= 0:
+            self.cmb_condicion.setCurrentIndex(indice_condicion)
         ingreso = self._snapshot_original.get("gestion_ingreso", "")
         indice_ingreso = self.cmb_ingreso.findData(ingreso)
         if indice_ingreso >= 0:
@@ -276,7 +271,6 @@ class BecarioFormWindow(DialogoBase):
         self.reject()
 
     def _aplicar_mayuscula_inicial(self, campo: QLineEdit):
-        """Normaliza el campo al salir de él (se ve el resultado de inmediato)."""
         campo.setText(becario_service.normalizar_nombre_propio(campo.text()))
 
     def _datos_formulario(self) -> dict:
@@ -287,6 +281,7 @@ class BecarioFormWindow(DialogoBase):
             "codigo_estudiante": self.txt_codigo.text(),
             "carrera": self.cmb_carrera.currentData() or self.cmb_carrera.currentText(),
             "tipo_beca": self.cmb_tipo.currentText(),
+            "condicion": self.cmb_condicion.currentText(),
             "gestion_ingreso": self.cmb_ingreso.currentData() or "",
             "contacto": self.txt_contacto.text(),
         }
@@ -299,11 +294,11 @@ class BecarioFormWindow(DialogoBase):
         ci = self.txt_ci.text().strip()
         codigo = self.txt_codigo.text().strip()
 
-        if not nombres or not apellidos or not ci or not codigo:
+        if not nombres or not apellidos or not codigo:
             QMessageBox.warning(
                 self,
                 "Campos obligatorios",
-                "Completa los campos: Nombres, Apellidos, CI y Código.",
+                "Completa los campos: Nombres, Apellidos y Código (el CI es opcional).",
             )
             self.lbl_error.setText("Completa los campos obligatorios antes de guardar.")
             self.lbl_error.setVisible(True)

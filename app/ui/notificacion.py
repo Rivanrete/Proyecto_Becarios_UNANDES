@@ -1,12 +1,3 @@
-"""Notificaciones propias del sistema — reemplazo de QMessageBox.
-
-REGLA DE PROYECTO: prohibidos los diálogos nativos del SO. Usar
-mostrar_notificacion(panel, mensaje, tipo) en confirmaciones, alertas
-y avisos de todas las HU. Mismo overlay, paleta y animación que el
-resto de modales.
-
-Tipos: "exito" (acento lima, ✓) y "error" (acento rojo, ✕).
-"""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -23,7 +14,6 @@ from app.ui.dialogo_base import DialogoBase
 
 
 class DialogoMensaje(DialogoBase):
-    """Modal pequeño sin marco nativo: tarjeta, mensaje y botón propio."""
 
     def __init__(self, parent=None, mensaje: str = "", tipo: str = "exito"):
         super().__init__(parent, modal=True)
@@ -102,16 +92,11 @@ class DialogoMensaje(DialogoBase):
 
 
 def mostrar_notificacion(panel, mensaje: str, tipo: str = "exito"):
-    """Muestra la notificación centrada sobre el panel (overlay + animación).
-
-    Retorna el código de resultado del diálogo.
-    """
     dialogo = DialogoMensaje(panel, mensaje=mensaje, tipo=tipo)
     return overlay.ejecutar_con_overlay(panel, dialogo)
 
 
 class DialogoConfirmacion(DialogoBase):
-    """Pregunta Eliminar/Cancelar con el estilo del sistema (sin nativos)."""
 
     def __init__(self, parent=None, mensaje: str = ""):
         super().__init__(parent, modal=True)
@@ -190,6 +175,5 @@ class DialogoConfirmacion(DialogoBase):
 
 
 def pedir_confirmacion(panel, mensaje: str) -> bool:
-    """Pregunta Eliminar/Cancelar sobre el panel. True solo si confirma."""
     dialogo = DialogoConfirmacion(panel, mensaje=mensaje)
     return overlay.ejecutar_con_overlay(panel, dialogo) == QDialog.DialogCode.Accepted

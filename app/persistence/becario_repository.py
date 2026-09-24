@@ -1,8 +1,3 @@
-"""Acceso a datos para la entidad Becario (SQLite) — HU-02.
-
-Mismo patrón que usuario_repository.py: funciones planas, get_connection
-y cierre con try/finally. Sin reglas de negocio (viven en becario_service).
-"""
 from pathlib import Path
 from typing import Optional
 
@@ -72,7 +67,6 @@ def buscar_por_id(becario_id: int, db_path: Path = DB_PATH) -> Optional[Becario]
 
 
 def buscar_por_codigo(codigo: str, db_path: Path = DB_PATH) -> Optional[Becario]:
-    """Busca por código de estudiante exacto (sin normalizar caso)."""
     clave = (codigo or "").strip()
     if not clave:
         return None
@@ -87,7 +81,6 @@ def buscar_por_codigo(codigo: str, db_path: Path = DB_PATH) -> Optional[Becario]
 
 
 def buscar_por_ci(ci: str, db_path: Path = DB_PATH) -> Optional[Becario]:
-    """Busca por CI exacto."""
     clave = (ci or "").strip()
     if not clave:
         return None
@@ -102,16 +95,18 @@ def buscar_por_ci(ci: str, db_path: Path = DB_PATH) -> Optional[Becario]:
 
 
 def existe_ci(ci: str, excluir_id: Optional[int] = None, db_path: Path = DB_PATH) -> bool:
-    """True si el CI pertenece a un becario distinto de excluir_id."""
+    clave = (ci or "").strip()
+    if not clave:
+        return False
     conn = get_connection(db_path)
     try:
         if excluir_id is None:
             fila = conn.execute(
-                "SELECT id FROM becario WHERE ci = ?", (ci.strip(),)
+                "SELECT id FROM becario WHERE ci = ?", (clave,)
             ).fetchone()
         else:
             fila = conn.execute(
-                "SELECT id FROM becario WHERE ci = ? AND id != ?", (ci.strip(), excluir_id)
+                "SELECT id FROM becario WHERE ci = ? AND id != ?", (clave, excluir_id)
             ).fetchone()
     finally:
         conn.close()
@@ -119,7 +114,6 @@ def existe_ci(ci: str, excluir_id: Optional[int] = None, db_path: Path = DB_PATH
 
 
 def existe_codigo(codigo: str, excluir_id: Optional[int] = None, db_path: Path = DB_PATH) -> bool:
-    """True si el código pertenece a un becario distinto de excluir_id."""
     conn = get_connection(db_path)
     try:
         if excluir_id is None:
@@ -146,7 +140,6 @@ def contar_becarios(db_path: Path = DB_PATH) -> int:
 
 
 def contar_por_tipo_beca(db_path: Path = DB_PATH) -> dict[str, int]:
-    """Cantidad de becarios por tipo_beca tal cual está guardado."""
     conn = get_connection(db_path)
     try:
         filas = conn.execute(
@@ -158,7 +151,6 @@ def contar_por_tipo_beca(db_path: Path = DB_PATH) -> dict[str, int]:
 
 
 def listar_ids_sin_tipo(db_path: Path = DB_PATH) -> list[int]:
-    """Ids con tipo vacío (pre-HU-03), en orden de creación para reparto."""
     conn = get_connection(db_path)
     try:
         filas = conn.execute(
@@ -170,7 +162,6 @@ def listar_ids_sin_tipo(db_path: Path = DB_PATH) -> list[int]:
 
 
 def asignar_tipo_beca(becario_id: int, tipo: str, db_path: Path = DB_PATH):
-    """Fija el tipo de un becario (backfill o futura HU-03 de reclasificar)."""
     conn = get_connection(db_path)
     try:
         conn.execute(
@@ -182,7 +173,6 @@ def asignar_tipo_beca(becario_id: int, tipo: str, db_path: Path = DB_PATH):
 
 
 def actualizar_estado(becario_id: int, estado: str, db_path: Path = DB_PATH):
-    """Fija el estado de un becario (HU-03). La validación vive en el servicio."""
     conn = get_connection(db_path)
     try:
         conn.execute(
@@ -194,7 +184,6 @@ def actualizar_estado(becario_id: int, estado: str, db_path: Path = DB_PATH):
 
 
 def eliminar(becario_id: int, db_path: Path = DB_PATH) -> bool:
-    """Borra el becario. Los seguimientos se borran antes (ver servicio)."""
     conn = get_connection(db_path)
     try:
         cur = conn.execute("DELETE FROM becario WHERE id = ?", (becario_id,))

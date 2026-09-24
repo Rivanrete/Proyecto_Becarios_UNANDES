@@ -1,11 +1,3 @@
-"""Aviso de cambio de gestión — se muestra una vez al abrir la app
-cuando la verificación detectó y aplicó el cambio (snapshot + reinicio).
-
-Informa gestión anterior/nueva y los números reales del proceso.
-Se cierra con la X, el botón "Entendido" o clic fuera (vía overlay,
-igual que el resto de modales). Sin lógica de negocio: recibe los
-números ya calculados por verificar_gestion_activa().
-"""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,

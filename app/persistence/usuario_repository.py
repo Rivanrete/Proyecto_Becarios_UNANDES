@@ -1,13 +1,3 @@
-"""Acceso a datos — SISTEMA DE CREDENCIAL ÚNICA (no multiusuario).
-
-El sistema solo tiene UN encargado (Responsable de Bienestar Estudiantil).
-La tabla `usuarios` se conserva por simplicidad de esquema, pero la lógica
-garantiza que solo exista UN registro:
-
-- La única lectura real es obtener_credencial_unica().
-- crear_usuario() SOLO existe para el seed inicial y rechaza un 2.º registro.
-- NO hay alta/listado/gestión de usuarios: no existe ese caso de uso en las HU.
-"""
 from pathlib import Path
 from typing import Optional
 
@@ -25,7 +15,6 @@ def contar_usuarios(db_path: Path = DB_PATH) -> int:
 
 
 def obtener_credencial_unica(db_path: Path = DB_PATH) -> Optional[Usuario]:
-    """Retorna el único registro de credencial, o None si la tabla está vacía."""
     conn = get_connection(db_path)
     try:
         row = conn.execute(
@@ -39,13 +28,9 @@ def obtener_credencial_unica(db_path: Path = DB_PATH) -> Optional[Usuario]:
 
 
 def crear_usuario(nombre_usuario: str, contrasena_hash: str, db_path: Path = DB_PATH) -> Usuario:
-    """NO USAR en UI ni en HU. Solo seed inicial.
-
-    Rechaza la creación si ya existe un registro (sistema de credencial única).
-    """
     if contar_usuarios(db_path) > 0:
         raise RuntimeError("Ya existe la credencial única: no se permite crear otro usuario.")
-    clave = nombre_usuario.strip().lower()
+    clave = nombre_usuario.strip()
     conn = get_connection(db_path)
     try:
         cur = conn.execute(

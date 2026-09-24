@@ -1,9 +1,3 @@
-"""Paleta institucional UNANDES.
-
-Aporta la identidad corporativa: azul marino profundo, verde institucional
-para acentos y fondo claro para paneles y tablas.
-"""
-
 AZUL_FONDO = "#07173D"
 AZUL_SIDEBAR = "#07173D"
 AZUL_TARJETA = "#0A1B44"
@@ -17,7 +11,6 @@ TEXTO_PRINCIPAL = "#ffffff"
 TEXTO_SECUNDARIO = "#c9d6ee"
 TEXTO_ERROR = "#ff6b6b"
 
-# Paleta clara para paneles, tabla y controles.
 BLANCO_TARJETA = "#FFFFFF"
 FONDO_TRABAJO = "#F4F6FA"
 FONDO_TABLA = "#FFFFFF"
