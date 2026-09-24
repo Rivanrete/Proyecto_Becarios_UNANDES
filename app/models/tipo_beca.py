@@ -1,8 +1,3 @@
-"""Entidad TipoBeca — catálogo (nombre único + activo).
-
-Si activo es False, no aparece en los combos pero se conserva el
-historial de becarios que lo usan.
-"""
 from dataclasses import dataclass
 from typing import Optional
 

@@ -1,8 +1,3 @@
-"""Parámetros simples del sistema (SQLite) — clave/valor.
-
-Patrón plano como los demás repositorios. Hoy guarda la gestión
-académica activa; sirve para futuros parámetros sin nuevas tablas.
-"""
 from pathlib import Path
 from typing import Optional
 

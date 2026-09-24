@@ -1,10 +1,3 @@
-"""Persistencia local SQLite — standalone, sin red ni servidor.
-
-La BD vive en <raiz_proyecto>/data/becarios.db
-Sistema de CREDENCIAL ÚNICA: init_db crea el esquema y la credencial
-del encargado si no existe. El CI es opcional y sin UNIQUE (muchos
-becarios reales no tienen); el código de estudiante sigue único.
-"""
 import sqlite3
 from pathlib import Path
 
@@ -100,11 +93,6 @@ def get_connection(db_path: Path = DB_PATH) -> sqlite3.Connection:
 
 
 def _migrar_becario(conn) -> None:
-    """Agrega columnas nuevas a BDs creadas con un esquema anterior.
-
-    CREATE TABLE IF NOT EXISTS no toca tablas ya existentes, por eso las
-    columnas que se suman después (ej. tipo_beca de HU-03) se migran aquí.
-    """
     columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(becario)")}
     if "tipo_beca" not in columnas:
         conn.execute("ALTER TABLE becario ADD COLUMN tipo_beca TEXT NOT NULL DEFAULT ''")
@@ -116,11 +104,6 @@ def _migrar_becario(conn) -> None:
 
 
 def _migrar_ci_no_unico(conn) -> None:
-    """Quita el UNIQUE de ci (idempotente, conserva todos los datos).
-
-    SQLite no permite soltar un UNIQUE con ALTER: se reconstruye la tabla
-    (los reales sin CI comparten el vacío y no deben chocar entre sí).
-    """
     sql = (conn.execute(
         "SELECT sql FROM sqlite_master WHERE name = 'becario'").fetchone() or [None])[0] or ""
     normalizado = " ".join(sql.upper().split())
@@ -134,7 +117,6 @@ def _migrar_ci_no_unico(conn) -> None:
 
 
 def _migrar_respaldo(conn) -> None:
-    """Agrega gestion_ingreso a respaldos viejos (idempotente, sin perder datos)."""
     columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(respaldo_becario)")}
     if "gestion_ingreso" not in columnas:
         conn.execute("ALTER TABLE respaldo_becario ADD COLUMN gestion_ingreso TEXT NOT NULL DEFAULT ''")
@@ -143,11 +125,6 @@ def _migrar_respaldo(conn) -> None:
 
 
 def _migrar_seguimiento(conn) -> None:
-    """Agrega condicion a seguimientos viejos (idempotente, sin perder datos).
-
-    Las columnas de porcentaje NO se tocan: se conservan en la BD aunque
-    la UI ya no las muestre.
-    """
     columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(seguimiento_becario)")}
     if "condicion" not in columnas:
         conn.execute("ALTER TABLE seguimiento_becario ADD COLUMN condicion TEXT NOT NULL DEFAULT ''")
@@ -164,8 +141,6 @@ def init_db(db_path: Path = DB_PATH) -> None:
         conn.commit()
     finally:
         conn.close()
-    # Seeds idempotentes. Imports diferidos para evitar dependencias
-    # circulares database -> services.
     from app.services.auth_service import asegurar_credencial_unica
     from app.services.becario_service import (
         completar_tipos_vacios,

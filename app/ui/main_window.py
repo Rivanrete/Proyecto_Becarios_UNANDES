@@ -1,9 +1,3 @@
-"""Pantalla principal — placeholder de HU-01 (CA-4).
-
-Solo se puede instanciar con un Usuario autenticado; si se intenta
-abrir sin autenticación previa, lanza PermissionError (CA: bloqueo de bypass).
-Será reemplazada por el listado de becarios en HU siguientes.
-"""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QLabel, QPushButton
 
@@ -20,8 +14,6 @@ class MainWindow(QMainWindow):
         self.usuario = usuario
         self.setWindowTitle("UNANDES • Registro de Becarios — Principal")
         self.setMinimumSize(640, 420)
-        # Maximizada (respeta la barra de tareas). main.py la muestra
-        # con showMaximized(); sin flags de fullscreen puro.
         self._build_ui()
 
     def _build_ui(self):

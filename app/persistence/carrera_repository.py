@@ -1,9 +1,3 @@
-"""Acceso a datos del catálogo de carreras (SQLite).
-
-Patrón plano como becario_repository.py. listar_activos() alimenta el
-combobox; crear/editar/desactivar quedan listos para la HU de gestión
-de catálogos (sin UI todavía).
-"""
 from pathlib import Path
 from typing import Optional
 
@@ -23,7 +17,6 @@ def _mapear(fila) -> Carrera:
 
 
 def listar_activos(db_path: Path = DB_PATH) -> list[Carrera]:
-    """Carreras disponibles para los combos, ordenadas por nombre."""
     conn = get_connection(db_path)
     try:
         filas = conn.execute(
@@ -72,7 +65,6 @@ def crear(sigla: str, nombre_completo: str, db_path: Path = DB_PATH) -> Carrera:
 
 
 def editar(carrera_id: int, nombre_completo: str, db_path: Path = DB_PATH):
-    """Renombra la carrera (la sigla no se cambia: es la clave usada por Becario)."""
     conn = get_connection(db_path)
     try:
         conn.execute(
@@ -85,7 +77,6 @@ def editar(carrera_id: int, nombre_completo: str, db_path: Path = DB_PATH):
 
 
 def desactivar(carrera_id: int, db_path: Path = DB_PATH):
-    """Oculta del combo sin borrar (conserva el historial de becarios)."""
     conn = get_connection(db_path)
     try:
         conn.execute("UPDATE carreras SET activo = 0 WHERE id = ?", (carrera_id,))

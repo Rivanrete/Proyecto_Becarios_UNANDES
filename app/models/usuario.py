@@ -1,8 +1,3 @@
-"""Entidad Usuario — HU-01.
-
-Solo los campos definidos en la HU: id, nombre_usuario, contraseña_hash.
-Sin lógica de validación ni de UI aquí.
-"""
 from dataclasses import dataclass
 from typing import Optional
 
@@ -14,7 +9,4 @@ class Usuario:
     contrasena_hash: str
 
     def __post_init__(self) -> None:
-        # Normalización mínima de identidad, sin reglas de negocio.
-        # Se conserva la capitalización original para mostrarla tal cual
-        # ("Sesión: ..."); la comparación del login es insensible a caso.
         self.nombre_usuario = self.nombre_usuario.strip()

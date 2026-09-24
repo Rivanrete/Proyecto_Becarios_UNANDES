@@ -1,9 +1,3 @@
-"""Casos de uso de becarios — HU-02.
-
-registrar_becario(datos) y editar_becario(id, datos): única puerta de
-escritura. La UI nunca valida por su cuenta, solo llama aquí y muestra
-el resultado. Duplicados se señalan con BecarioDuplicadoError(campo).
-"""
 from pathlib import Path
 from datetime import date, datetime
 
@@ -33,11 +27,6 @@ def _capitalizar_persona(valor: str) -> str:
 
 
 def opciones_carrera(db_path: Path = DB_PATH) -> list[tuple[str, str]]:
-    """(sigla, 'Nombre Completo - SIGLA') desde la BD, ordenadas por nombre.
-
-    Mismo formato de siempre para la UI; la fuente ahora es la tabla
-    carreras (solo activas), no una lista fija en código.
-    """
     return [
         (c.sigla, f"{c.nombre_completo} - {c.sigla}")
         for c in carrera_repository.listar_activos(db_path)
@@ -45,7 +34,6 @@ def opciones_carrera(db_path: Path = DB_PATH) -> list[tuple[str, str]]:
 
 
 def listar_tipos_beca(db_path: Path = DB_PATH) -> list[str]:
-    """Nombres de tipos activos para el combo, desde la BD."""
     return [t.nombre for t in tipo_beca_repository.listar_activos(db_path)]
 
 
@@ -53,13 +41,11 @@ GESTION_INGRESO_MINIMA = "I-2019"
 
 
 def _clave_gestion(gestion: str) -> tuple[int, int]:
-    """(año, semestre) para comparar gestiones I-AAAA < II-AAAA < I-(AAAA+1)."""
     mitad, anio = gestion.split("-", 1)
     return int(anio), (1 if mitad == "I" else 2)
 
 
 def siguiente_gestion(gestion: str) -> str:
-    """La gestión que sigue a la indicada (I-AAAA -> II-AAAA -> I-(AAAA+1))."""
     mitad, anio = gestion.split("-", 1)
     if mitad == "I":
         return f"II-{anio}"
@@ -67,19 +53,16 @@ def siguiente_gestion(gestion: str) -> str:
 
 
 def gestiones_ingreso_nuevo(db_path: Path = DB_PATH) -> list[str]:
-    """Solo actual y siguiente: lo único válido al registrar (sin pasado)."""
     actual = obtener_gestion_predeterminada(db_path)
     return [actual, siguiente_gestion(actual)]
 
 
 def gestiones_ingreso_editar(db_path: Path = DB_PATH) -> list[str]:
-    """Completa para editar, de la más reciente a la más antigua."""
     actual = obtener_gestion_predeterminada(db_path)
     return [siguiente_gestion(actual)] + list(reversed(gestiones_ingreso_validas(db_path)))
 
 
 def gestiones_ingreso_validas(db_path: Path = DB_PATH) -> list[str]:
-    """De I-2019 a la gestión activa (guardada o calculada), sin futuras."""
     actual = obtener_gestion_predeterminada(db_path)
     validas = []
     anio = 2019
@@ -93,7 +76,6 @@ def gestiones_ingreso_validas(db_path: Path = DB_PATH) -> list[str]:
 
 
 class BecarioDuplicadoError(ValueError):
-    """CI o código de estudiante ya registrado. Atributo `campo`: 'ci' o 'codigo_estudiante'."""
 
     def __init__(self, campo: str):
         self.campo = campo
@@ -105,7 +87,6 @@ def _normalizar(datos: dict) -> dict:
     limpio = {k: (str(datos.get(k, "") or "").strip()) for k in
               ("nombres", "apellidos", "ci", "codigo_estudiante", "carrera",
                "contacto", "tipo_beca", "gestion_ingreso")}
-    # Acepta sigla ("SIS") o etiqueta del combo ("Ingeniería de Sistemas - SIS").
     if " - " in limpio["carrera"]:
         limpio["carrera"] = limpio["carrera"].rsplit(" - ", 1)[1]
     limpio["carrera"] = limpio["carrera"].upper()
@@ -120,19 +101,16 @@ _CARACTERES_NOMBRE_EXTRA = {" ", "-", "'", "’"}
 
 
 def es_nombre_valido(texto: str) -> bool:
-    """Mínimo 2 caracteres; solo letras (tildes, ü, ñ), espacios, guion y apóstrofo."""
     if len(texto or "") < 2:
         return False
     return all(c.isalpha() or c in _CARACTERES_NOMBRE_EXTRA for c in texto)
 
 
 def _capitalizar_parte(palabra: str) -> str:
-    """Primera en mayúscula y resto en minúscula (respeta tildes y ñ)."""
     return palabra[:1].upper() + palabra[1:].lower() if palabra else palabra
 
 
 def _capitalizar_palabra(palabra: str) -> str:
-    """Capitaliza cada parte separada por guion o apóstrofo."""
     for separador in ("-", "'", "’"):
         if separador in palabra:
             return separador.join(_capitalizar_parte(p) for p in palabra.split(separador))
@@ -140,12 +118,6 @@ def _capitalizar_palabra(palabra: str) -> str:
 
 
 def normalizar_nombre_propio(texto: str) -> str:
-    """Mayúscula inicial por palabra ("ana maría" -> "Ana María").
-
-    Quita espacios de sobra; las excepciones (de, del, la, las, los, y, e)
-    van en minúscula salvo que abran el nombre ("de la Cruz").
-    No agrega ni quita tildes.
-    """
     normalizadas = []
     for i, palabra in enumerate((texto or "").split()):
         base = palabra.lower()
@@ -159,16 +131,12 @@ def normalizar_nombre_propio(texto: str) -> str:
 def _validar_requeridos(datos: dict, db_path: Path = DB_PATH):
     faltantes = [c for c in CAMPOS_REQUERIDOS if not datos[c]]
     if faltantes:
-        # Solo texto visible al usuario ("codigo_estudiante" -> "código", etc).
-        # (Variables, columnas y lógica de validación no cambian.)
         visibles = {"codigo_estudiante": "código", "tipo_beca": "tipo de beca"}
         raise ValueError(f"Faltan datos obligatorios: {', '.join(visibles.get(c, c) for c in faltantes)}.")
     if datos["nombres"] and not es_nombre_valido(datos["nombres"]):
         raise ValueError("Nombres no válidos: mínimo 2 letras (tildes, ñ, espacios, guion y apóstrofo).")
     if datos["apellidos"] and not es_nombre_valido(datos["apellidos"]):
         raise ValueError("Apellidos no válidos: mínimo 2 letras (tildes, ñ, espacios, guion y apóstrofo).")
-    # CI, código y contacto son opcionales (muchos reales no tienen CI);
-    # si vienen, solo enteros. El vacío nunca es duplicado (ver repositorio).
     for campo, visible in (("ci", "CI"), ("codigo_estudiante", "código"),
                            ("contacto", "contacto")):
         if datos[campo] and not datos[campo].isdigit():
@@ -182,12 +150,6 @@ def _validar_requeridos(datos: dict, db_path: Path = DB_PATH):
 
 
 def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
-    """Valida y registra un becario nuevo. Lanza BecarioDuplicadoError si CI o código existen.
-
-    Crea además su SeguimientoBecario inicial con valores automáticos:
-    horas en "No cumplió" y materias en "Sí" (el resto en negativo/0%).
-    La condición (Nueva/Renovación) viene obligatoria en `datos`.
-    """
     limpio = _normalizar(datos)
     _validar_requeridos(limpio, db_path)
     condicion = normalizar_condicion(datos.get("condicion", ""))
@@ -218,7 +180,6 @@ def registrar_becario(datos: dict, db_path: Path = DB_PATH) -> Becario:
 
 
 def editar_becario(becario_id: int, datos: dict, db_path: Path = DB_PATH) -> Becario:
-    """Actualiza un becario. El CI/código propio no cuenta como duplicado."""
     actual = becario_repository.buscar_por_id(becario_id, db_path)
     if actual is None:
         raise ValueError("El becario no existe.")
@@ -234,11 +195,8 @@ def editar_becario(becario_id: int, datos: dict, db_path: Path = DB_PATH) -> Bec
     if becario_repository.existe_codigo(limpio["codigo_estudiante"], excluir_id=becario_id, db_path=db_path):
         raise BecarioDuplicadoError("codigo_estudiante")
     actualizado = Becario(id=becario_id, **limpio)
-    # El estado se gestiona en HU-03, no en este formulario: se preserva.
     actualizado.estado = actual.estado
     guardado = becario_repository.actualizar_becario(actualizado, db_path)
-    # La condición vive en el seguimiento más reciente (misma gestión que
-    # muestra el listado); si el formulario la trae, se guarda ahí.
     condicion = normalizar_condicion(datos.get("condicion", ""))
     if condicion:
         if condicion not in CONDICIONES_SEGUIMIENTO:
@@ -258,10 +216,6 @@ def obtener_becario(becario_id: int, db_path: Path = DB_PATH) -> Becario | None:
 
 
 def buscar_becario(codigo_o_ci: str, db_path: Path = DB_PATH) -> Becario | None:
-    """HU-04: busca primero por código de estudiante y, si no hay, por CI.
-
-    Retorna el Becario encontrado o None (la UI muestra "sin resultados").
-    """
     texto = (codigo_o_ci or "").strip()
     if not texto:
         return None
@@ -272,12 +226,6 @@ def buscar_becario(codigo_o_ci: str, db_path: Path = DB_PATH) -> Becario | None:
 
 
 def obtener_ficha_completa(becario_id: int, db_path: Path = DB_PATH) -> dict | None:
-    """HU-04: agrega Becario + SeguimientoBecario más reciente.
-
-    Claves: becario, seguimiento (o None), registro_academico (None,
-    reservado para HU-05). Sin DocumentoBecario: esa HU salió del alcance
-    vigente, por eso la ficha no tiene sección de documentos.
-    """
     becario = becario_repository.buscar_por_id(becario_id, db_path)
     if becario is None:
         return None
@@ -292,18 +240,11 @@ def obtener_ficha_completa(becario_id: int, db_path: Path = DB_PATH) -> dict | N
         "becario": becario,
         "seguimiento": seguimiento,
         "carrera_etiqueta": etiqueta,
-        "registro_academico": None,  # HU-05: notas y horas del periodo
+        "registro_academico": None,
     }
 
 
 def _asegurar_seguimiento(becario_id: int, periodo: str | None, db_path: Path = DB_PATH) -> SeguimientoBecario:
-    """Retorna el SeguimientoBecario de (becario, periodo), creándolo si falta.
-
-    Comportamiento definido HU-05: si no hay registro para el periodo
-    (gestion más reciente, o la indicada), se crea uno con valores por
-    defecto (0%, horas "No cumplió", materias "Sí") y se actualiza sobre él.
-    La acción nunca se bloquea por falta de registro.
-    """
     gestion = (periodo or "").strip()
     if not gestion or gestion == "—":
         gestion = obtener_gestion_actual()
@@ -317,7 +258,6 @@ def _asegurar_seguimiento(becario_id: int, periodo: str | None, db_path: Path = 
 def actualizar_materias_en_orden(
     becario_id: int, periodo: str | None, valor: bool, db_path: Path = DB_PATH
 ) -> SeguimientoBecario:
-    """HU-05: guarda Sí/No de materias en el registro del periodo (existe o creado)."""
     seg = _asegurar_seguimiento(becario_id, periodo, db_path)
     seg.materias_en_orden = bool(valor)
     return seguimiento_repository.actualizar(seg, db_path)
@@ -326,7 +266,6 @@ def actualizar_materias_en_orden(
 def actualizar_horas_becarias(
     becario_id: int, periodo: str | None, valor: bool, db_path: Path = DB_PATH
 ) -> SeguimientoBecario:
-    """HU-05: guarda Cumplió/No cumplió de horas en el registro del periodo (existe o creado)."""
     seg = _asegurar_seguimiento(becario_id, periodo, db_path)
     seg.horas_becarias = bool(valor)
     return seguimiento_repository.actualizar(seg, db_path)
@@ -335,7 +274,6 @@ def actualizar_horas_becarias(
 def actualizar_carpeta_cancelada(
     becario_id: int, periodo: str | None, valor: bool, db_path: Path = DB_PATH
 ) -> SeguimientoBecario:
-    """HU-05 ext.: guarda Sí/No de carpeta en el registro del periodo (existe o creado)."""
     seg = _asegurar_seguimiento(becario_id, periodo, db_path)
     seg.carpeta_cancelada = bool(valor)
     return seguimiento_repository.actualizar(seg, db_path)
@@ -344,7 +282,6 @@ def actualizar_carpeta_cancelada(
 def actualizar_carta_renovacion(
     becario_id: int, periodo: str | None, valor: bool, db_path: Path = DB_PATH
 ) -> SeguimientoBecario:
-    """HU-05 ext.: guarda Sí/No de carta en el registro del periodo (existe o creado)."""
     seg = _asegurar_seguimiento(becario_id, periodo, db_path)
     seg.carta_renovacion = bool(valor)
     return seguimiento_repository.actualizar(seg, db_path)
@@ -352,13 +289,10 @@ def actualizar_carta_renovacion(
 
 ESTADOS_BECARIO = ["Activo", "En renovación", "Baja/Inactivo"]
 
-# Condición del becario en la gestión (columna "Nueva / Renovación" del
-# listado). Solo informativa: no participa en colores, vencidos ni filtros.
 CONDICIONES_SEGUIMIENTO = ("Nueva", "Renovación")
 
 
 def normalizar_condicion(valor: str) -> str:
-    """'nueva' -> 'Nueva'; 'renovacion' (con o sin tilde) -> 'Renovación'."""
     texto = (valor or "").strip().lower()
     if texto == "nueva":
         return "Nueva"
@@ -370,11 +304,6 @@ def normalizar_condicion(valor: str) -> str:
 def actualizar_condicion(
     becario_id: int, periodo: str | None, valor: str, db_path: Path = DB_PATH
 ) -> SeguimientoBecario:
-    """Guarda Nueva/Renovación en el registro del periodo (existe o creado).
-
-    Mismo camino que los otros badges de seguimiento (vía rápida en la UI,
-    sin recargar la tabla). No toca colores, vencidos ni alertas.
-    """
     condicion = normalizar_condicion(valor)
     if condicion not in CONDICIONES_SEGUIMIENTO:
         raise ValueError("Condición no válida. Use Nueva o Renovación.")
@@ -386,7 +315,6 @@ def actualizar_condicion(
 
 
 def obtener_condicion_actual(becario_id: int, db_path: Path = DB_PATH) -> str:
-    """Condición del seguimiento más reciente ("", si aún no tiene)."""
     seguimientos = seguimiento_repository.listar_por_becario(becario_id, db_path)
     if not seguimientos:
         return ""
@@ -394,13 +322,6 @@ def obtener_condicion_actual(becario_id: int, db_path: Path = DB_PATH) -> str:
 
 
 def migrar_condicion_inicial(db_path: Path = DB_PATH) -> dict:
-    """Rellena condicion en seguimientos viejos. Idempotente.
-
-    Solo toca filas con condicion vacía: "Nueva" si la gestión de ingreso
-    del becario es igual a la gestión predeterminada, "Renovación" en caso
-    contrario. Las columnas de porcentaje no se tocan (se conservan aunque
-    la UI ya no las muestre). Retorna {"nuevas", "renovacion"}.
-    """
     from app.services.gestion_service import obtener_gestion_predeterminada
 
     gestion_actual = obtener_gestion_predeterminada(db_path)
@@ -420,7 +341,6 @@ def migrar_condicion_inicial(db_path: Path = DB_PATH) -> dict:
 
 
 def actualizar_estado(becario_id: int, estado: str, db_path: Path = DB_PATH) -> Becario:
-    """HU-03: cambia el estado del becario (validado contra los 3 permitidos)."""
     valor = (estado or "").strip()
     if valor not in ESTADOS_BECARIO:
         raise ValueError(f"Estado no válido. Use uno de: {', '.join(ESTADOS_BECARIO)}.")
@@ -431,12 +351,10 @@ def actualizar_estado(becario_id: int, estado: str, db_path: Path = DB_PATH) -> 
 
 
 def listar_para_panel(db_path: Path = DB_PATH):
-    """Filas del Panel de Control: (Becario, SeguimientoBecario o None)."""
     return seguimiento_repository.listar_para_panel(db_path)
 
 
 def listar_inactivos(db_path: Path = DB_PATH):
-    """Becarios con estado Baja/Inactivo (no salen en el listado principal)."""
     return [
         (b, seg) for b, seg in seguimiento_repository.listar_para_panel(db_path)
         if b.estado == "Baja/Inactivo"
@@ -444,7 +362,6 @@ def listar_inactivos(db_path: Path = DB_PATH):
 
 
 def eliminar_becario(becario_id: int, db_path: Path = DB_PATH) -> bool:
-    """Elimina el becario y sus seguimientos (hijos primero). Solo con confirmación UI."""
     if becario_repository.buscar_por_id(becario_id, db_path) is None:
         raise ValueError("El becario no existe.")
     seguimiento_repository.eliminar_por_becario(becario_id, db_path)
@@ -452,7 +369,6 @@ def eliminar_becario(becario_id: int, db_path: Path = DB_PATH) -> bool:
 
 
 def eliminar_inactivos(db_path: Path = DB_PATH) -> int:
-    """Elimina TODOS los Baja/Inactivo (becario + seguimientos). Retorna cuántos."""
     eliminados = 0
     for becario, _seg in listar_inactivos(db_path):
         if becario.id is not None and eliminar_becario(becario.id, db_path):
@@ -461,12 +377,6 @@ def eliminar_inactivos(db_path: Path = DB_PATH) -> int:
 
 
 def historial_gestiones(becario_id: int, db_path: Path = DB_PATH) -> list[str]:
-    """Historial cronológico del becario desde su gestión de ingreso.
-
-    La gestión de ingreso es fija y no se sobrescribe al cambiar la gestión
-    activa; por eso se incorpora siempre como primer punto del historial y no se
-    pierde aunque no exista un seguimiento físico para ese período.
-    """
     becario = becario_repository.buscar_por_id(becario_id, db_path)
     gestiones = []
     if becario is not None and becario.gestion_ingreso:
@@ -476,25 +386,17 @@ def historial_gestiones(becario_id: int, db_path: Path = DB_PATH) -> list[str]:
 
 
 def contar_becarios_por_categoria(db_path: Path = DB_PATH) -> list[tuple[str, int]]:
-    """HU-06: [(categoria, cantidad)] en el orden oficial del catálogo, con 0 incluidos."""
     from app.services.catalogo_service import TIPOS_BECA_OFICIALES
 
     conteo = becario_repository.contar_por_tipo_beca(db_path)
     return [(nombre, conteo.get(nombre, 0)) for nombre in TIPOS_BECA_OFICIALES]
 
 
-# ---------------------------------------------------------------------------
-# Fecha límite de requisitos (alerta visual de vencidos).
-# Clave en la tabla configuracion (sin migraciones): "YYYY-MM-DD" o ausente.
-# La define la Lic. a mano; cada cambio de gestión la resetea a vacío
-# (ver gestion_service.resetear_periodo). Sin fecha no hay vencidos.
-# ---------------------------------------------------------------------------
 CLAVE_FECHA_LIMITE = "fecha_limite_requisitos"
 
 FLAGS_REQUISITOS = ("materias_en_orden", "carpeta_cancelada",
                     "carta_renovacion", "horas_becarias")
 
-# Nombre claro de cada parámetro (lista de faltantes en texto).
 NOMBRES_PARAMETROS = {
     "horas_becarias": "horas becarias",
     "materias_en_orden": "materias en orden",
@@ -504,12 +406,6 @@ NOMBRES_PARAMETROS = {
 
 
 def parametros_faltantes(estado: str, seg) -> list[str]:
-    """Parámetros incumplidos, en texto claro (vacía si cumple todo).
-
-    Es LA regla que pinta las filas en rojo (ver incumple_requisitos):
-    `seg` None equivale a todo en falso; Baja/Inactivo nunca tiene
-    faltantes. Función pura (sin BD).
-    """
     if (estado or "").strip() == "Baja/Inactivo":
         return []
     if seg is None:
@@ -519,17 +415,11 @@ def parametros_faltantes(estado: str, seg) -> list[str]:
 
 
 def obtener_fecha_limite(db_path: Path = DB_PATH) -> str | None:
-    """Fecha límite vigente ("YYYY-MM-DD") o None si no hay / está vacía."""
     valor = (configuracion_repository.obtener(CLAVE_FECHA_LIMITE, db_path) or "").strip()
     return valor or None
 
 
 def guardar_fecha_limite(fecha: str | None, db_path: Path = DB_PATH) -> str | None:
-    """Guarda la fecha límite manual (valida calendario real YYYY-MM-DD).
-
-    `None` o vacío la quita (sin fecha límite). Retorna la fecha guardada
-    o None si se quitó. ValueError si el formato o la fecha no es válida.
-    """
     texto = (fecha or "").strip()
     if not texto:
         configuracion_repository.guardar(CLAVE_FECHA_LIMITE, "", db_path)
@@ -543,13 +433,10 @@ def guardar_fecha_limite(fecha: str | None, db_path: Path = DB_PATH) -> str | No
 
 
 def limpiar_fecha_limite(db_path: Path = DB_PATH):
-    """Resetea la fecha límite a vacío (cada gestión empieza sin fecha)."""
     configuracion_repository.guardar(CLAVE_FECHA_LIMITE, "", db_path)
 
 
 def formato_fecha_corta(fecha_iso: str | None) -> str:
-    """'2026-09-20' -> '20/09/26'. Solo visualización (la BD sigue en ISO,
-    para que 'hoy >= fecha_limite' no tenga ambigüedad). '' si no hay."""
     try:
         return datetime.strptime((fecha_iso or "").strip(), "%Y-%m-%d").strftime("%d/%m/%y")
     except ValueError:
@@ -558,13 +445,6 @@ def formato_fecha_corta(fecha_iso: str | None) -> str:
 
 def incumple_requisitos(estado: str, seg, fecha_limite: str | None,
                         hoy: date | None = None) -> bool:
-    """True si el becario está vencido: hoy >= fecha límite y algún flag en falso.
-
-    `seg`: SeguimientoBecario de la gestión activa (o None si no tiene
-    registro: se trata como todo en falso). Sin fecha límite, o con los 4
-    flags en verdadero, o estado Baja/Inactivo: False. Función pura (sin
-    BD) para que la UI la evalúe sobre su caché sin consultas extra.
-    """
     if (estado or "").strip() == "Baja/Inactivo":
         return False
     if not (fecha_limite or "").strip():
@@ -575,17 +455,10 @@ def incumple_requisitos(estado: str, seg, fecha_limite: str | None,
         return False
     if (hoy or date.today()) < limite:
         return False
-    # Misma regla que parametros_faltantes(): con o sin seguimiento.
     return bool(parametros_faltantes(estado, seg))
 
 
 def completar_tipos_vacios(db_path: Path = DB_PATH) -> int:
-    """Backfill puntual: becarios con tipo vacío ('').
-
-    Les asigna tipos del catálogo oficial en reparto rotativo por orden
-    de id (orden oficial, no alfabético). No toca a los que ya tienen
-    tipo. Idempotente (0 si no hay vacíos).
-    """
     tipos = [t.nombre for t in tipo_beca_repository.listar_activos(db_path)]
     if not tipos:
         return 0
@@ -596,18 +469,10 @@ def completar_tipos_vacios(db_path: Path = DB_PATH) -> int:
 
 
 def distribuir_estados_ejemplo(db_path: Path = DB_PATH) -> int:
-    """Reparto puntual: si TODOS los becarios están en "Activo" (valor por
-    defecto, nunca clasificados porque no había UI para cambiarlo), asigna
-    estados variados por orden de id (En renovación ×3, Baja ×1).
-
-    Si algún registro ya tiene otro estado, no toca nada (dato real).
-    Idempotente: segunda corrida encuentra no-Activos y retorna 0.
-    """
     todos = becario_repository.listar_todos(db_path)
     if not todos or any(b.estado != "Activo" for b in todos):
         return 0
     ids = sorted(b.id for b in todos if b.id is not None)
-    # Reparto simple y trazable: posiciones 5, 9, 13 -> En renovación; 11 -> Baja.
     cambiados = 0
     for posicion, estado in ((5, "En renovación"), (9, "En renovación"),
                             (11, "Baja/Inactivo"), (13, "En renovación")):

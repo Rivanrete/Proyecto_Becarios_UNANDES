@@ -1,12 +1,3 @@
-"""Localización de archivos en desarrollo y empaquetado (PyInstaller).
-
-- datos_dir(): carpeta ESCRIBIBLE para la BD (dev: <proyecto>/data;
-  frozen: <carpeta del exe>/data, se crea al arrancar).
-- assets_dir(): recursos de SOLO LECTURA (dev: app/assets;
-  frozen: sys._MEIPASS/assets, empaquetados con --add-data).
-
-Sin lógica de negocio: solo dónde viven los archivos.
-"""
 import sys
 from pathlib import Path
 

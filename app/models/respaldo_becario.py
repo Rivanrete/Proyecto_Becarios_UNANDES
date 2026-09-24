@@ -1,4 +1,3 @@
-"""Un becario tal como estaba al cerrarse una gestión (solo lectura)."""
 from dataclasses import dataclass
 from typing import Optional
 

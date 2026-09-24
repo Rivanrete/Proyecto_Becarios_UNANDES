@@ -1,13 +1,3 @@
-"""Overlay + animación para modales — componente reutilizable del proyecto.
-
-REGLA DE PROYECTO: ningún diálogo nativo del SO (QMessageBox, QInputDialog).
-Todo emergente usa overlay de oscurecimiento + animación suave mediante
-ejecutar_con_overlay(panel, dialogo) —o mostrar_sin_bloqueo() cuando el
-diálogo no debe bloquear. Estándar UX: X propia + clic fuera (overlay) + Esc.
-
-El QDialog por sí solo NO oscurece el fondo en Qt: el overlay es un QWidget
-explícito que cubre la ventana principal y se destruye al cerrar el modal.
-"""
 from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
@@ -26,7 +16,6 @@ OPACIDAD_OVERLAY = "background-color: rgba(0, 0, 0, 120);"
 
 
 def mostrar_overlay(panel: QWidget) -> QWidget:
-    """Cubre la ventana con el oscurecimiento. Se destruye en ejecutar_con_overlay."""
     overlay = QWidget(panel)
     overlay.setObjectName("overlayModal")
     overlay.setGeometry(panel.rect())
@@ -36,13 +25,6 @@ def mostrar_overlay(panel: QWidget) -> QWidget:
 
 
 class _SeguidorVentanaPrincipal(QObject):
-    """Mantiene el velo pegado a la ventana y el diálogo centrado en ella.
-
-    El velo nace con el tamaño que tiene la ventana al crearse (a veces
-    previo al maximizado); sin este seguidor, al maximizar o redimensionar
-    parte de la ventana quedaba sin oscurecer y el diálogo descentrado.
-    Solo observa el Resize: nunca consume el evento (retorna False).
-    """
 
     def __init__(self, velo: QWidget, ventana: QWidget, dialogo: QDialog | None = None):
         super().__init__(velo)
@@ -60,20 +42,17 @@ class _SeguidorVentanaPrincipal(QObject):
 
 def _pegar_velo_a_ventana(velo: QWidget, ventana: QWidget,
                           dialogo: QDialog | None = None):
-    """El velo sigue el tamaño de la ventana hasta que se retire."""
     seguidor = _SeguidorVentanaPrincipal(velo, ventana, dialogo)
     ventana.installEventFilter(seguidor)
     return seguidor
 
 
 def _despegar_velo_de_ventana(ventana: QWidget, seguidor: QObject):
-    """Retira el seguidor para no dejar un filtro colgando en la ventana."""
     ventana.removeEventFilter(seguidor)
     seguidor.deleteLater()
 
 
 def posicion_centrada(dialogo: QDialog, panel: QWidget) -> QPoint:
-    """Posición centrada del diálogo (solo tarjeta, sin marco) sobre la ventana."""
     dialogo.adjustSize()
     centro = panel.rect().center()
     return QPoint(
@@ -90,7 +69,6 @@ def _efecto_opacidad(widget: QWidget, inicial: float) -> QGraphicsOpacityEffect:
 
 
 def _animacion_entrada(overlay: QWidget, dialogo: QDialog, pos_final: QPoint) -> QParallelAnimationGroup:
-    """Fade in del overlay + fade in con subida suave del diálogo."""
     grupo = QParallelAnimationGroup(dialogo)
 
     anim_overlay = QPropertyAnimation(_efecto_opacidad(overlay, 0.0), b"opacity", overlay)
@@ -119,7 +97,6 @@ def _animacion_entrada(overlay: QWidget, dialogo: QDialog, pos_final: QPoint) ->
 
 
 def _animacion_salida(overlay: QWidget):
-    """Fade out rápido del overlay al cerrar el modal."""
     efecto = overlay.graphicsEffect()
     if not isinstance(efecto, QGraphicsOpacityEffect):
         efecto = _efecto_opacidad(overlay, 1.0)
@@ -135,18 +112,13 @@ def _animacion_salida(overlay: QWidget):
 
 
 def ejecutar_con_overlay(panel: QWidget, dialogo: QDialog) -> int:
-    """Muestra el diálogo centrado sobre el panel oscurecido y animado.
-
-    Retorna el código de resultado (QDialog.Accepted / Rejected).
-    El overlay se destruye siempre al cerrar, sin residuos ni bloqueo.
-    """
     overlay = mostrar_overlay(panel)
     seguidor = _pegar_velo_a_ventana(overlay, panel, dialogo)
     try:
         pos_final = posicion_centrada(dialogo, panel)
         grupo = _animacion_entrada(overlay, dialogo, pos_final)
         dialogo.show()
-        grupo.start()  # corre dentro del loop de exec()
+        grupo.start()
         overlay.mousePressEvent = lambda event: dialogo.reject()
         return dialogo.exec()
     finally:
@@ -161,18 +133,6 @@ ANCHO_SIDEBAR_PX = 220
 
 
 def _posicionar_dual(panel: QWidget, dialogo: QDialog, lateral: QDialog) -> QPoint:
-    """Ubica el diálogo a la izquierda y el lateral a su derecha.
-
-    Iguala lo VISIBLE (las tarjetas, no solo las ventanas): la tarjeta
-    lateral toma el alto exacto de la tarjeta del diálogo y ambas ventanas
-    el mismo alto total, con los mismos márgenes -> bordes alineados.
-    El par se centra en el ÁREA DE TRABAJO (sin el sidebar): centrarlo en
-    toda la ventana lo dejaba cargado a la izquierda ("a un costado").
-    Nada se sale del panel: la posición se recorta a sus bordes; si el
-    par no cabe lado a lado (ventana muy angosta), el diálogo queda
-    completo a la izquierda y el lateral a su derecha.
-    Retorna la posición del diálogo.
-    """
     dialogo.adjustSize()
     lateral.adjustSize()
     tarjeta = dialogo.findChild(QFrame, "card")
@@ -185,8 +145,6 @@ def _posicionar_dual(panel: QWidget, dialogo: QDialog, lateral: QDialog) -> QPoi
     izquierda_contenido = ANCHO_SIDEBAR_PX if panel.width() > ANCHO_SIDEBAR_PX else 0
     ancho_contenido = max(0, panel.width() - izquierda_contenido)
     centro_x = izquierda_contenido + ancho_contenido // 2
-    # Dentro del panel siempre: si no caben lado a lado, se recorre lo
-    # mínimo (el diálogo queda lo más completo posible).
     x_inicio = min(max(izquierda_contenido, centro_x - ancho_total // 2),
                    max(0, panel.width() - ancho_total))
     alto = dialogo.height()
@@ -198,17 +156,7 @@ def _posicionar_dual(panel: QWidget, dialogo: QDialog, lateral: QDialog) -> QPoi
 
 def mostrar_sin_bloqueo(panel: QWidget, dialogo: QDialog, lateral: QDialog | None = None,
                         al_terminar=None):
-    """Muestra diálogos NO modales sobre overlay (approach: sin exec()).
-
-    - Un clic fuera del diálogo (sobre el overlay) lo cierra vía reject(),
-      igual que la X, Cancelar o Esc: sin eventFilter manual.
-    - Al cerrarse el principal se cierra el lateral y se limpia el overlay.
-    - al_terminar(resultado) se invoca una sola vez al cerrar.
-    Retorna el overlay (para rastreo de sesión).
-    """
     overlay = mostrar_overlay(panel)
-    # El velo sigue a la ventana; los diálogos conservan su posición
-    # (el layout dual tiene la suya propia y no se recentra).
     seguidor = _pegar_velo_a_ventana(overlay, panel)
     if lateral is None:
         pos_final = posicion_centrada(dialogo, panel)

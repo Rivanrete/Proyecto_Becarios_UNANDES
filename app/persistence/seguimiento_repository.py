@@ -1,8 +1,3 @@
-"""Acceso a datos para SeguimientoBecario (SQLite) — HU-02/HU-05/HU-08.
-
-Incluye listar_para_panel(): JOIN entre becario y seguimiento_becario
-que alimenta la tabla del Panel de Control.
-"""
 from pathlib import Path
 from typing import Optional
 
@@ -45,7 +40,6 @@ def obtener_por_becario(becario_id: int, gestion: str, db_path: Path = DB_PATH) 
 
 
 def actualizar(seg: SeguimientoBecario, db_path: Path = DB_PATH) -> SeguimientoBecario:
-    """Actualiza el registro existente de (becario_id, gestion)."""
     conn = get_connection(db_path)
     try:
         conn.execute(
@@ -64,7 +58,6 @@ def actualizar(seg: SeguimientoBecario, db_path: Path = DB_PATH) -> SeguimientoB
 
 
 def obtener_ultima_gestion(db_path: Path = DB_PATH) -> Optional[str]:
-    """Retorna la gestión más reciente con seguimientos, o None si no hay."""
     conn = get_connection(db_path)
     try:
         fila = conn.execute(
@@ -76,7 +69,6 @@ def obtener_ultima_gestion(db_path: Path = DB_PATH) -> Optional[str]:
 
 
 def eliminar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> int:
-    """Borra los seguimientos del becario (hijos primero por integridad)."""
     conn = get_connection(db_path)
     try:
         cur = conn.execute(
@@ -89,7 +81,6 @@ def eliminar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> int:
 
 
 def listar_gestiones(becario_id: int, db_path: Path = DB_PATH) -> list[str]:
-    """Gestiones del becario sin duplicados y en orden cronológico."""
     conn = get_connection(db_path)
     try:
         filas = conn.execute(
@@ -133,10 +124,6 @@ def _mapear(fila) -> SeguimientoBecario:
 
 
 def listar_para_panel(db_path: Path = DB_PATH) -> list[tuple[Becario, Optional[SeguimientoBecario]]]:
-    """JOIN becario + su seguimiento más reciente (uno por becario).
-
-    Retorna (Becario, SeguimientoBecario o None si aún no tiene).
-    """
     conn = get_connection(db_path)
     try:
         filas = conn.execute(

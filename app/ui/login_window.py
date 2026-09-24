@@ -1,11 +1,3 @@
-"""Ventana de login — HU-01 (tarjeta blanca, maximizada, escudo, recordar usuario).
-
-Solo UI: captura usuario/contraseña y delega a validar_credenciales().
-NO contiene reglas de validación.
-
-"Recordar usuario" solo pre-rellena el nombre de usuario (QSettings
-local). NO guarda la contraseña ni mantiene sesión.
-"""
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QSettings
@@ -34,7 +26,6 @@ _DIR_ASSETS = rutas.assets_dir()
 
 
 def _ruta_escudo() -> Path | None:
-    """Retorna la ruta del logo si existe (logo nuevo primero, escudo anterior de respaldo)."""
     for nombre in ("logo-horizontal-unandes.png", "logo-horizontal-unandes.jpg",
                    "logo-horizontal-unandes.jpeg",
                    "escudo_unandes.png", "escudo_unandes.jpg", "escudo_unandes.jpeg"):
@@ -47,9 +38,6 @@ def _ruta_escudo() -> Path | None:
     return None
 
 
-# Ojo abierto / cerrado estilo outline monocromático (SVG en línea, sin
-# librerías externas; se renderiza con QtSvg del propio PySide6).
-# Color = texto secundario de la paleta sobre la tarjeta.
 _COLOR_OJO = "#b9c2d8"
 _OJO_ABIERTO = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"'
@@ -72,7 +60,6 @@ _OJO_CERRADO = (
 
 
 def _icono_ojo(abierto: bool) -> QIcon:
-    """Renderiza el SVG del ojo a QIcon (24px, monocromático de paleta)."""
     renderer = QSvgRenderer(bytearray((_OJO_ABIERTO if abierto else _OJO_CERRADO).encode("utf-8")))
     imagen = QImage(24, 24, QImage.Format.Format_ARGB32)
     imagen.fill(0)
@@ -88,8 +75,6 @@ class LoginWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("UNANDES • Registro de Becarios — Iniciar sesión")
-        # Controles nativos de ventana (minimizar, maximizar/restaurar, cerrar).
-        # Necesarios porque la ventana abre maximizada.
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.WindowMinimizeButtonHint
@@ -104,13 +89,6 @@ class LoginWindow(QDialog):
         self._cargar_usuario_recordado()
 
     def showEvent(self, event):
-        """Abre maximizada (respeta la barra de tareas).
-
-        Se fuerza aquí porque el estado fijado en __init__ se pierde
-        en diálogos modales cuando exec() re-muestra la ventana.
-        Se usa showMaximized(), NO showFullScreen(), para no tapar
-        la barra de tareas de Windows.
-        """
         super().showEvent(event)
         if not self._maximizado_aplicado:
             self._maximizado_aplicado = True
@@ -130,9 +108,6 @@ class LoginWindow(QDialog):
         card_layout.setSpacing(12)
         card_layout.setContentsMargins(40, 36, 40, 36)
 
-        # Logo UNANDES centrado arriba. Escala ajustada al contenedor
-        # (ancho y alto máximos, KeepAspectRatio): nunca recorta ni desborda.
-        # Si el archivo falta, el espacio queda vacío sin romper la app.
         self.lbl_escudo = QLabel(card)
         self.lbl_escudo.setObjectName("escudo")
         self.lbl_escudo.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -189,7 +164,6 @@ class LoginWindow(QDialog):
         fila_clave.addWidget(self.btn_mostrar)
         card_layout.addLayout(fila_clave)
 
-        # Mensaje de error inline (CA-5). Oculto hasta que falla un intento.
         self.lbl_error = QLabel("", card)
         self.lbl_error.setObjectName("error")
         self.lbl_error.setWordWrap(True)
@@ -236,7 +210,6 @@ class LoginWindow(QDialog):
         self.btn_mostrar.setIcon(_icono_ojo(not mostrar))
 
     def _on_login(self):
-        """Delegación total a la capa de negocio. Sin validación en la UI."""
         self.lbl_error.setVisible(False)
         usuario = auth_service.validar_credenciales(
             self.txt_usuario.text(), self.txt_clave.text()
@@ -246,7 +219,7 @@ class LoginWindow(QDialog):
                 self.settings.setValue(KEY_USUARIO, usuario.nombre_usuario)
             else:
                 self.settings.remove(KEY_USUARIO)
-            self.accept()  # main.py abrirá la pantalla principal
+            self.accept()
         else:
             self.lbl_error.setText("Usuario o contraseña incorrectos. Intente nuevamente.")
             self.lbl_error.setVisible(True)

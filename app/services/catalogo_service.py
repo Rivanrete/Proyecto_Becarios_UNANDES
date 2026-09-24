@@ -1,11 +1,3 @@
-"""Seed y migración de catálogos (carreras y tipos de beca).
-
-Fuente única del catálogo de becas: TIPOS_BECA_OFICIALES (10 rótulos
-reales del archivador de Bienestar Estudiantil, en este orden exacto).
-Todo lo demás (combos, filtros, contador, validación, backfill) lee de
-la tabla tipos_beca, que se siembra/migra desde esa lista.
-"""
-
 import unicodedata
 from pathlib import Path
 
@@ -45,16 +37,12 @@ TIPOS_BECA_OFICIALES = [
     "Plan Beca Marketing Nuevas",
 ]
 
-# Compatibilidad: el nombre anterior apuntaba a la lista de 7 tipos
-# agrupados; ahora es alias de la lista oficial (misma fuente única).
 TIPOS_BECA_INICIALES = list(TIPOS_BECA_OFICIALES)
 
-# Marcadores de los catálogos viejos (si aparecen, hay que migrar una vez).
 _MARCADORES_VIEJOS_CARRERAS = {"GAS", "CON"}
 _MARCADORES_VIEJOS_TIPOS = {"Excelencia", "Convenio", "Directorio",
                             "Plantel Administrativo", "Ministerial"}
 
-# Valores agrupados anteriores (lista de 7) que la migración oficial reemplaza.
 _TIPOS_AGRUPADOS_ANTERIORES = {
     "Excelencia Académica",
     "Económica Social",
@@ -67,17 +55,11 @@ _TIPOS_AGRUPADOS_ANTERIORES = {
 
 
 def _normalizar_tipo(valor: str) -> str:
-    """Minúsculas sin tildes para comparar tipos viejos con tolerancia."""
     base = unicodedata.normalize("NFKD", valor or "")
     return "".join(c for c in base if not unicodedata.combining(c)).lower().strip()
 
 
 def _destino_mas_cercano(valor_viejo: str) -> str:
-    """Mapea un valor no reconocido al oficial más cercano (sin inventar).
-
-    Se usa solo para valores fuera de la lista anterior conocida; el
-    reporte final debe anotar cada caso (ver migrar_tipos_beca_oficiales).
-    """
     tipo = _normalizar_tipo(valor_viejo)
     if "minister" in tipo or "educacion" in tipo:
         return "Beca Social Ministerio de Educación Renovación"
@@ -97,12 +79,6 @@ def _destino_mas_cercano(valor_viejo: str) -> str:
 
 
 def _reparto_renovacion_nuevas(valor_viejo: str, posicion: int) -> str | None:
-    """Variante Renovación/Nuevas para los 3 tipos agrupados que se parten.
-
-    `posicion` es el orden del becario dentro de su grupo viejo (0, 1, 2…):
-    pares -> Renovación, impares -> Nuevas. Así ambas variantes quedan con
-    datos para probar los filtros. Retorna None si no es partible.
-    """
     tipo = _normalizar_tipo(valor_viejo)
     if "economica" in tipo and "social" in tipo and "ministerio" not in tipo \
             and "educacion" not in tipo:
@@ -127,19 +103,6 @@ _MAPEO_DIRECTO_OFICIAL = {
 
 
 def migrar_tipos_beca_oficiales(db_path: Path = DB_PATH) -> dict:
-    """Migra catálogo y becarios a los 10 tipos oficiales. Idempotente.
-
-    - Catálogo: si tipos_beca ya contiene exactamente los 10 oficiales,
-      solo repara el orden y retorna sin borrar nada. Si no, reemplaza
-      el contenido por los 10 oficiales en orden.
-    - Becarios: mapea cada tipo_beca viejo al nuevo (ver reglas abajo);
-      los que ya están en valores oficiales no se tocan. Correr dos
-      veces no cambia nada más.
-    - Respaldos (respaldo_becario): NO se tocan (históricos intactos).
-
-    Retorna {"tipos_reemplazados", "becarios_actualizados",
-    "no_reconocidos": [(id, valor_viejo, destino)]}.
-    """
     from app.persistence.database import get_connection
 
     tipo_beca_repository.asegurar_columna_orden(db_path)
@@ -201,7 +164,6 @@ def migrar_tipos_beca_oficiales(db_path: Path = DB_PATH) -> dict:
 
 
 def asegurar_catalogos(db_path: Path = DB_PATH) -> tuple[int, int]:
-    """Siembra catálogos vacíos. Retorna (carreras, tipos) insertados."""
     creadas = 0
     if carrera_repository.contar(db_path) == 0:
         for sigla, nombre in CARRERAS_INICIALES:
@@ -216,11 +178,6 @@ def asegurar_catalogos(db_path: Path = DB_PATH) -> tuple[int, int]:
 
 
 def migrar_catalogos_v2(db_path: Path = DB_PATH) -> tuple[int, int]:
-    """Reemplaza una sola vez los catálogos viejos por los vigentes.
-
-    Solo actúa si detecta marcadores viejos; si ya están los nuevos,
-    retorna (0, 0). No toca becarios (eso lo hace otro paso).
-    """
     from app.persistence.database import get_connection
 
     conn = get_connection(db_path)

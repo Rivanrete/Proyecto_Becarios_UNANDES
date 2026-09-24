@@ -1,7 +1,3 @@
-"""Snapshots de cierre de gestión (solo lectura desde la UI).
-
-Una fila por becario con todos sus campos + la gestión que terminaba.
-"""
 from datetime import datetime
 from pathlib import Path
 
@@ -36,7 +32,6 @@ def _mapear(fila) -> RespaldoBecario:
 
 
 def guardar_respaldo(gestion: str, filas: list[tuple, ...], db_path: Path = DB_PATH) -> int:
-    """Guarda el snapshot. `filas`: (Becario, SeguimientoBecario|None). Idempotente por gestión."""
     if existe_gestion(gestion, db_path):
         return 0
     ahora = datetime.now().strftime("%Y-%m-%d %H:%M")

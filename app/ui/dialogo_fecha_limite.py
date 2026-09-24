@@ -1,18 +1,3 @@
-"""Diálogo para definir la fecha límite de requisitos — la fija la Lic. a mano.
-
-Sigue el estándar UX del proyecto: hereda DialogoBase (frameless), se
-muestra con overlay y valida en línea con lbl_error (sin QMessageBox).
-Guardar devuelve la fecha ISO; "Quitar fecha límite" la deja sin límite.
-
-Sin fecha guardada el selector inicia vacío y Guardar arranca
-deshabilitado: imposible guardar por accidente. La fecha se MUESTRA como
-DD/MM/AA pero se guarda en ISO (YYYY-MM-DD).
-
-El selector es línea de solo lectura + botón con ícono SVG (mismo método
-de render que el ojo de login_window) que abre un calendario emergente
-tipo popup anclado al campo: no modal, se cierra con un clic en una fecha
-o fuera de él, sin bloquear el diálogo principal.
-"""
 from PySide6.QtCore import QPoint, Qt, QDate, QSize, QEvent, Signal
 from PySide6.QtGui import QImage, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
@@ -32,8 +17,6 @@ from app.services.becario_service import formato_fecha_corta
 from app.ui import theme
 from app.ui.dialogo_base import DialogoBase
 
-# Calendario outline monocromático (SVG en línea, como el ojo del login).
-# Color = texto principal de la paleta sobre la tarjeta.
 _CALENDARIO_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"'
     ' viewBox="0 0 24 24" fill="none" stroke="' + theme.TEXTO_PRINCIPAL + '"'
@@ -46,7 +29,6 @@ _CALENDARIO_SVG = (
 
 
 def icono_calendario():
-    """Renderiza el SVG del calendario a QIcon (mismo método que el ojo)."""
     from PySide6.QtGui import QIcon
     renderer = QSvgRenderer(bytearray(_CALENDARIO_SVG.encode("utf-8")))
     imagen = QImage(24, 24, QImage.Format.Format_ARGB32)
@@ -60,11 +42,6 @@ def icono_calendario():
 
 
 class _PopupCalendario(QWidget):
-    """Calendario flotante anclado al campo (Popup: no modal, cierra solo).
-
-    Un clic en una fecha la elige y cierra; un clic fuera o Esc cierra sin
-    cambiar nada. El diálogo principal sigue interactuable en todo momento.
-    """
 
     fecha_elegida = Signal(QDate)
 
@@ -107,7 +84,6 @@ class _PopupCalendario(QWidget):
         """)
 
     def mostrar_anclado(self, campo: QWidget, fecha: QDate | None):
-        """Muestra pegado al campo: debajo, o arriba/al costado sin espacio."""
         self.calendario.setSelectedDate(
             fecha if (fecha is not None and fecha.isValid()) else QDate.currentDate())
         self.adjustSize()
@@ -131,7 +107,6 @@ class _PopupCalendario(QWidget):
 
 
 class DialogoFechaLimite(DialogoBase):
-    """Modal pequeño: muestra la vigente (o "Sin fecha límite") y edita."""
 
     def __init__(self, parent=None, fecha_actual: str | None = None):
         super().__init__(parent, modal=True)
@@ -143,9 +118,6 @@ class DialogoFechaLimite(DialogoBase):
         self._build_ui()
         self._apply_style()
         self._precargar()
-        # Red de seguridad para el cierre-fuera del popup (además del
-        # autocierre nativo de Qt.Popup): mientras el calendario está
-        # visible, un clic fuera de él lo cierra sin cambiar la fecha.
         QApplication.instance().installEventFilter(self)
 
     def _build_ui(self):
@@ -215,7 +187,6 @@ class DialogoFechaLimite(DialogoBase):
         root.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
 
     def _precargar(self):
-        """Con fecha guardada muestra esa exacta; si no, vacío real."""
         if self._vigente:
             guardada = QDate.fromString(self._vigente, "yyyy-MM-dd")
             if guardada.isValid():
@@ -229,7 +200,6 @@ class DialogoFechaLimite(DialogoBase):
         self.btn_guardar.setEnabled(False)
 
     def _fijar_fecha(self, fecha: QDate):
-        """Refleja la fecha elegida (línea DD/MM/AA + Guardar habilitado)."""
         self._fecha = fecha
         self.txt_fecha.setText(fecha.toString("dd/MM/yy"))
         self.btn_guardar.setEnabled(True)
@@ -255,7 +225,6 @@ class DialogoFechaLimite(DialogoBase):
         super().closeEvent(event)
 
     def eventFilter(self, obj, event):
-        """Cierra el calendario ante un clic fuera de él (sin tocar la fecha)."""
         pop = self._popup
         if (pop is not None and pop.isVisible()
                 and event.type() == QEvent.Type.MouseButtonPress):

@@ -1,9 +1,3 @@
-"""Diálogo para crear un informe del acta — pide N° de acta y nombre de archivo.
-
-Sigue el estándar UX del proyecto: hereda DialogoBase (frameless), se
-muestra con overlay y valida en línea con lbl_error (sin QMessageBox).
-El nombre se sugiere como Acta_N{numero}_{gestion} y queda editable.
-"""
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
@@ -20,7 +14,6 @@ from app.ui.dialogo_base import DialogoBase
 
 
 class DialogoNuevoInforme(DialogoBase):
-    """Modal pequeño: N° de acta + nombre de archivo editable."""
 
     def __init__(self, parent=None):
         super().__init__(parent, modal=True)
@@ -85,7 +78,6 @@ class DialogoNuevoInforme(DialogoBase):
         root.addWidget(card, alignment=Qt.AlignmentFlag.AlignCenter)
 
     def _actualizar_sugerencia(self):
-        """Regenera el nombre sugerido al cambiar el número (conserva edición manual)."""
         actual = self.txt_nombre.text().strip()
         sugerido_previo = getattr(self, "_ultima_sugerencia", "")
         nuevo = informe_service.sugerir_nombre_acta(

@@ -1,9 +1,3 @@
-"""Acceso a datos del catálogo de tipos de beca (SQLite).
-
-Patrón plano como becario_repository.py. listar_activos() alimenta el
-combobox; crear/editar/desactivar quedan listos para la HU de gestión
-de catálogos (sin UI todavía).
-"""
 from pathlib import Path
 from typing import Optional
 
@@ -22,7 +16,6 @@ def _mapear(fila) -> TipoBeca:
 
 
 def listar_activos(db_path: Path = DB_PATH) -> list[TipoBeca]:
-    """Tipos disponibles para los combos, en el orden oficial del catálogo."""
     asegurar_columna_orden(db_path)
     conn = get_connection(db_path)
     try:
@@ -47,7 +40,6 @@ def listar_todos(db_path: Path = DB_PATH) -> list[TipoBeca]:
 
 
 def asegurar_columna_orden(db_path: Path = DB_PATH):
-    """Agrega tipos_beca.orden si falta (idempotente, conserva datos)."""
     conn = get_connection(db_path)
     try:
         columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(tipos_beca)")}
@@ -59,7 +51,6 @@ def asegurar_columna_orden(db_path: Path = DB_PATH):
 
 
 def reparar_orden(db_path: Path = DB_PATH, orden_oficial: list[str] | None = None):
-    """Fija tipos_beca.orden según la lista oficial (idempotente)."""
     if not orden_oficial:
         return
     conn = get_connection(db_path)
@@ -117,7 +108,6 @@ def editar(tipo_id: int, nombre: str, db_path: Path = DB_PATH):
 
 
 def desactivar(tipo_id: int, db_path: Path = DB_PATH):
-    """Oculta del combo sin borrar (conserva el historial de becarios)."""
     conn = get_connection(db_path)
     try:
         conn.execute("UPDATE tipos_beca SET activo = 0 WHERE id = ?", (tipo_id,))
