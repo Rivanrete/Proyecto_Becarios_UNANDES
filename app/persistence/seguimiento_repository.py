@@ -102,19 +102,6 @@ def listar_gestiones(becario_id: int, db_path: Path = DB_PATH) -> list[str]:
     return sorted(gestiones, key=lambda gestion: (int(gestion.split("-", 1)[1]), 1 if gestion.startswith("I-") else 2))
 
 
-def listar_gestiones_todas(db_path: Path = DB_PATH) -> list[str]:
-    """Todas las gestiones con seguimientos, en orden cronológico."""
-    conn = get_connection(db_path)
-    try:
-        filas = conn.execute(
-            "SELECT DISTINCT gestion FROM seguimiento_becario"
-        ).fetchall()
-    finally:
-        conn.close()
-    gestiones = [fila["gestion"] for fila in filas if (fila["gestion"] or "").strip()]
-    return sorted(gestiones, key=lambda gestion: (int(gestion.split("-", 1)[1]), 1 if gestion.startswith("I-") else 2))
-
-
 def listar_por_becario(becario_id: int, db_path: Path = DB_PATH) -> list[SeguimientoBecario]:
     conn = get_connection(db_path)
     try:

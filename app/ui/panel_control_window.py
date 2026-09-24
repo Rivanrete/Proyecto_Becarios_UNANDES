@@ -47,7 +47,6 @@ from app.ui.dialogo_fecha_limite import DialogoFechaLimite
 from app.ui.dialogo_nuevo_informe import DialogoNuevoInforme
 from app.ui.notificacion import mostrar_notificacion, pedir_confirmacion
 from app.ui.overlay import ejecutar_con_overlay
-from app.ui.pagina_reportes import PaginaReportes
 
 COLUMNAS = [
     "N.",
@@ -183,7 +182,7 @@ class PanelControlWindow(QMainWindow):
     # independiente del índice de página en el QStackedWidget.
     # Las opciones futuras (Configuración) se agregan aquí en su HU.
     ITEMS_SIDEBAR = [("Panel de Control", 0), ("Respaldos", 2),
-                     ("Becarios Inactivos", 1), ("Seguimiento", 4), ("Informes", 3)]
+                     ("Becarios Inactivos", 1), ("Informes", 3)]
 
     def __init__(self, usuario: Usuario | None, parent=None):
         if usuario is None or not SesionActual.activa():
@@ -343,8 +342,6 @@ class PanelControlWindow(QMainWindow):
         self.paginas.addWidget(self._construir_pagina_inactivos())
         self.paginas.addWidget(self._construir_pagina_respaldos())
         self.paginas.addWidget(self._construir_pagina_informes())
-        self._pagina_reportes = PaginaReportes(raiz)
-        self.paginas.addWidget(self._pagina_reportes)
         layout_raiz.addWidget(self.paginas, 1)
         self.setCentralWidget(raiz)
 
@@ -797,10 +794,8 @@ class PanelControlWindow(QMainWindow):
         mostrar_notificacion(self, "Informe eliminado correctamente.", tipo="exito")
 
     def _cambiar_vista(self, indice: int):
-        """Navegación del sidebar (0 = listado, 1 = inactivos, 2 = respaldos, 3 = informes, 4 = seguimiento)."""
+        """Navegación del sidebar (0 = listado, 1 = inactivos, 2 = respaldos, 3 = informes)."""
         self.paginas.setCurrentIndex(indice)
-        if indice == 4:
-            self._pagina_reportes.refrescar()  # datos frescos al abrir
         for boton, (_etiqueta, pagina) in zip(self._botones_sidebar, self.ITEMS_SIDEBAR):
             boton.setObjectName("itemActivo" if pagina == indice else "item")
         self._apply_style()
@@ -842,7 +837,6 @@ class PanelControlWindow(QMainWindow):
         self.cmb_respaldo.blockSignals(False)
         self._cargar_respaldo(self.cmb_respaldo.currentText())
         self._cargar_informes()
-        self._pagina_reportes.refrescar()
 
     def _al_escribir(self, texto: str):
         """Filtra en tiempo real con cada tecla (coincidencia parcial)."""
@@ -1703,15 +1697,6 @@ class PanelControlWindow(QMainWindow):
                 background-color: {theme.CAMPO_FONDO}; color: {theme.TEXTO_OSCURO};
                 border: 1px solid {theme.BORDE_SUAVE}; border-radius: 8px; padding: 10px 12px;
                 font-size: 13px;
-            }}
-            QTextBrowser#vistaReporte {{
-                background-color: {theme.FONDO_TABLA}; color: {theme.TEXTO_OSCURO};
-                border: 1px solid {theme.BORDES_TABLA}; border-radius: 8px;
-                font-size: 13px; padding: 6px;
-            }}
-            QCheckBox {{
-                color: {theme.TEXTO_OSCURO}; font-size: 13px; font-weight: 600;
-                spacing: 8px;
             }}
             QPushButton#nuevo {{
                 background-color: {theme.VERDE_LIMA}; color: #0a1633;
