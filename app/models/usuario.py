@@ -15,4 +15,6 @@ class Usuario:
 
     def __post_init__(self) -> None:
         # Normalización mínima de identidad, sin reglas de negocio.
-        self.nombre_usuario = self.nombre_usuario.strip().lower()
+        # Se conserva la capitalización original para mostrarla tal cual
+        # ("Sesión: ..."); la comparación del login es insensible a caso.
+        self.nombre_usuario = self.nombre_usuario.strip()

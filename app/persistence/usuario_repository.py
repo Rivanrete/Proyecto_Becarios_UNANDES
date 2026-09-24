@@ -45,7 +45,7 @@ def crear_usuario(nombre_usuario: str, contrasena_hash: str, db_path: Path = DB_
     """
     if contar_usuarios(db_path) > 0:
         raise RuntimeError("Ya existe la credencial única: no se permite crear otro usuario.")
-    clave = nombre_usuario.strip().lower()
+    clave = nombre_usuario.strip()
     conn = get_connection(db_path)
     try:
         cur = conn.execute(

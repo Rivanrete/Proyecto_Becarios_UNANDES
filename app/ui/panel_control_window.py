@@ -709,7 +709,7 @@ class PanelControlWindow(QMainWindow):
 
     @staticmethod
     def _tamano_legible(tamano_bytes: int) -> str:
-        """1234 -> '1,2 KB' (coma decimal, formato local)."""
+        """5678 -> '5,5 KB' (coma decimal, formato local)."""
         if tamano_bytes < 1024:
             return f"{tamano_bytes} B"
         kb = tamano_bytes / 1024

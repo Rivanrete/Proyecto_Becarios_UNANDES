@@ -165,7 +165,7 @@ class LoginWindow(QDialog):
         card_layout.addWidget(lbl_usuario)
 
         self.txt_usuario = QLineEdit(card)
-        self.txt_usuario.setPlaceholderText("Ej. prueba")
+        self.txt_usuario.setPlaceholderText("Ej. BienestarEstudiantil")
         self.txt_usuario.setClearButtonEnabled(True)
         card_layout.addWidget(self.txt_usuario)
 

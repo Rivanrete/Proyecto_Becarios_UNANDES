@@ -1,6 +1,6 @@
 """Punto de entrada — HU-01 (credencial única) + Panel de Control.
 
-Flujo: init BD local (+ seed prueba/1234 si está vacía) → muestra login
+Flujo: init BD local (+ credencial única si está vacía) → muestra login
 maximizado → si login aceptado Y hay sesión activa, muestra el Panel de
 Control maximizado. Sin sesión no se abre el panel (bloqueo de bypass).
 """

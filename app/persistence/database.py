@@ -2,7 +2,7 @@
 
 La BD vive en <raiz_proyecto>/data/becarios.db
 Sistema de CREDENCIAL ÚNICA: init_db crea el esquema y la credencial
-(prueba / 1234 hasheada). El CI es opcional y sin UNIQUE (muchos
+del encargado si no existe. El CI es opcional y sin UNIQUE (muchos
 becarios reales no tienen); el código de estudiante sigue único.
 """
 import sqlite3

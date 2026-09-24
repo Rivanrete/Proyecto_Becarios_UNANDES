@@ -1,10 +1,10 @@
 """Lógica de negocio de autenticación — HU-01 / CU-01 (credencial única).
 
 - validar_credenciales(usuario, contraseña): única puerta de validación.
-  Compara contra el ÚNICO registro (obtener_credencial_unica), no contra
-  una búsqueda multiusuario.
+  Compara contra el ÚNICO registro (obtener_credencial_unica), sin
+  importar mayúsculas/minúsculas del usuario; la contraseña sí es exacta.
 - Sesión activa como variable de estado en memoria (sin tokens ni expiración).
-- Seed de pruebas: prueba / 1234 (hasheada, solo desarrollo).
+- La clave inicial se guarda solo como hash PBKDF2 (nunca en texto plano).
 """
 import hashlib
 import hmac
@@ -18,8 +18,12 @@ from app.persistence.database import DB_PATH
 
 _ITERACIONES = 200_000
 
-USUARIO_SEMILLA = "prueba"
-CONTRASENA_SEMILLA = "1234"
+USUARIO_SEMILLA = "BienestarEstudiantil"
+
+# Hash PBKDF2-HMAC-SHA256 de la clave inicial (formato "salt$hash", mismo
+# mecanismo que generar_hash_contrasena pero con sal fija para que el
+# seed sea reproducible). La clave nunca aparece en texto plano.
+_HASH_SEMILLA = "unandes-bienestar-01$b0e2ce04c09a615e0bc30c8598920615448166095b5be7f71557b75612ff5118"
 
 
 class SesionActual:
@@ -69,7 +73,7 @@ def validar_credenciales(nombre_usuario: str, contrasena: str, db_path: Path = D
     cred = usuario_repository.obtener_credencial_unica(db_path)
     if cred is None:
         return None
-    if usuario != cred.nombre_usuario:
+    if usuario != (cred.nombre_usuario or "").strip().lower():
         return None
     if not verificar_contrasena(clave, cred.contrasena_hash):
         return None
@@ -79,22 +83,22 @@ def validar_credenciales(nombre_usuario: str, contrasena: str, db_path: Path = D
 
 def asegurar_credencial_unica(
     nombre_usuario: str = USUARIO_SEMILLA,
-    contrasena_plana: str = CONTRASENA_SEMILLA,
+    contrasena_hash: str = _HASH_SEMILLA,
     db_path: Path = DB_PATH,
 ) -> Usuario:
-    """Garantiza que exista el único registro (seed de desarrollo). Idempotente."""
+    """Garantiza que exista el único registro (seed inicial). Idempotente."""
     existente = usuario_repository.obtener_credencial_unica(db_path)
     if existente is not None:
         return existente
     return usuario_repository.crear_usuario(
-        nombre_usuario, generar_hash_contrasena(contrasena_plana), db_path
+        nombre_usuario, contrasena_hash, db_path
     )
 
 
 # Alias de compatibilidad (antes se llamaba así).
 def asegurar_usuario_inicial(
     nombre_usuario: str = USUARIO_SEMILLA,
-    contrasena_plana: str = CONTRASENA_SEMILLA,
+    contrasena_hash: str = _HASH_SEMILLA,
     db_path: Path = DB_PATH,
 ) -> Usuario:
-    return asegurar_credencial_unica(nombre_usuario, contrasena_plana, db_path)
+    return asegurar_credencial_unica(nombre_usuario, contrasena_hash, db_path)
