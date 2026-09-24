@@ -315,11 +315,11 @@ class BecarioFormWindow(DialogoBase):
         ci = self.txt_ci.text().strip()
         codigo = self.txt_codigo.text().strip()
 
-        if not nombres or not apellidos or not ci or not codigo:
+        if not nombres or not apellidos or not codigo:
             QMessageBox.warning(
                 self,
                 "Campos obligatorios",
-                "Completa los campos: Nombres, Apellidos, CI y Código.",
+                "Completa los campos: Nombres, Apellidos y Código (el CI es opcional).",
             )
             self.lbl_error.setText("Completa los campos obligatorios antes de guardar.")
             self.lbl_error.setVisible(True)

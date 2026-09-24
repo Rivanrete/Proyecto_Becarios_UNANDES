@@ -1,8 +1,9 @@
 """Persistencia local SQLite — standalone, sin red ni servidor.
 
 La BD vive en <raiz_proyecto>/data/becarios.db
-Sistema de CREDENCIAL ÚNICA: init_db crea el esquema y, si la tabla
-está vacía, inserta el seed de pruebas (prueba / 1234 hasheada).
+Sistema de CREDENCIAL ÚNICA: init_db crea el esquema y la credencial
+(prueba / 1234 hasheada). El CI es opcional y sin UNIQUE (muchos
+becarios reales no tienen); el código de estudiante sigue único.
 """
 import sqlite3
 from pathlib import Path
@@ -11,17 +12,12 @@ from app import rutas
 
 DB_PATH = rutas.datos_dir() / "becarios.db"
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS usuarios (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre_usuario TEXT UNIQUE NOT NULL,
-    contrasena_hash TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS becario (
+_TABLA_BECARIO = """
+CREATE TABLE becario (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombres TEXT NOT NULL,
     apellidos TEXT NOT NULL,
-    ci TEXT NOT NULL UNIQUE,
+    ci TEXT NOT NULL DEFAULT '',
     codigo_estudiante TEXT NOT NULL UNIQUE,
     carrera TEXT NOT NULL,
     contacto TEXT NOT NULL DEFAULT '',
@@ -29,6 +25,19 @@ CREATE TABLE IF NOT EXISTS becario (
     estado TEXT NOT NULL DEFAULT 'En renovación',
     gestion_ingreso TEXT NOT NULL DEFAULT ''
 );
+"""
+
+_COLUMNAS_BECARIO = ("id, nombres, apellidos, ci, codigo_estudiante, carrera,"
+                     " contacto, tipo_beca, estado, gestion_ingreso")
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre_usuario TEXT UNIQUE NOT NULL,
+    contrasena_hash TEXT NOT NULL
+);
+""" + _TABLA_BECARIO.replace("CREATE TABLE becario (",
+                             "CREATE TABLE IF NOT EXISTS becario (") + """
 CREATE TABLE IF NOT EXISTS seguimiento_becario (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     becario_id INTEGER NOT NULL REFERENCES becario(id),
@@ -103,6 +112,25 @@ def _migrar_becario(conn) -> None:
         conn.execute("ALTER TABLE becario ADD COLUMN estado TEXT NOT NULL DEFAULT 'En renovación'")
     if "gestion_ingreso" not in columnas:
         conn.execute("ALTER TABLE becario ADD COLUMN gestion_ingreso TEXT NOT NULL DEFAULT ''")
+    _migrar_ci_no_unico(conn)
+
+
+def _migrar_ci_no_unico(conn) -> None:
+    """Quita el UNIQUE de ci (idempotente, conserva todos los datos).
+
+    SQLite no permite soltar un UNIQUE con ALTER: se reconstruye la tabla
+    (los reales sin CI comparten el vacío y no deben chocar entre sí).
+    """
+    sql = (conn.execute(
+        "SELECT sql FROM sqlite_master WHERE name = 'becario'").fetchone() or [None])[0] or ""
+    normalizado = " ".join(sql.upper().split())
+    if "CI TEXT NOT NULL UNIQUE" not in normalizado:
+        return
+    conn.execute("ALTER TABLE becario RENAME TO becario_anterior")
+    conn.execute(_TABLA_BECARIO)
+    conn.execute(f"INSERT INTO becario ({_COLUMNAS_BECARIO}) SELECT {_COLUMNAS_BECARIO}"
+                 " FROM becario_anterior")
+    conn.execute("DROP TABLE becario_anterior")
 
 
 def _migrar_respaldo(conn) -> None:
@@ -140,7 +168,6 @@ def init_db(db_path: Path = DB_PATH) -> None:
     # circulares database -> services.
     from app.services.auth_service import asegurar_credencial_unica
     from app.services.becario_service import (
-        asegurar_datos_ejemplo,
         completar_tipos_vacios,
         distribuir_estados_ejemplo,
         migrar_condicion_inicial,
@@ -155,7 +182,6 @@ def init_db(db_path: Path = DB_PATH) -> None:
     asegurar_catalogos(db_path=db_path)
     migrar_catalogos_v2(db_path=db_path)
     migrar_tipos_beca_oficiales(db_path=db_path)
-    asegurar_datos_ejemplo(db_path=db_path)
     completar_tipos_vacios(db_path=db_path)
     distribuir_estados_ejemplo(db_path=db_path)
     migrar_condicion_inicial(db_path=db_path)

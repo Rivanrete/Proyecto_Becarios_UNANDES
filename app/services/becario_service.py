@@ -19,7 +19,7 @@ from app.services.gestion_service import (
     ordenar_gestiones,
 )
 
-CAMPOS_REQUERIDOS = ("nombres", "apellidos", "ci", "codigo_estudiante", "carrera", "tipo_beca")
+CAMPOS_REQUERIDOS = ("nombres", "apellidos", "codigo_estudiante", "carrera", "tipo_beca")
 
 
 def _capitalizar_persona(valor: str) -> str:
@@ -167,6 +167,12 @@ def _validar_requeridos(datos: dict, db_path: Path = DB_PATH):
         raise ValueError("Nombres no válidos: mínimo 2 letras (tildes, ñ, espacios, guion y apóstrofo).")
     if datos["apellidos"] and not es_nombre_valido(datos["apellidos"]):
         raise ValueError("Apellidos no válidos: mínimo 2 letras (tildes, ñ, espacios, guion y apóstrofo).")
+    # CI, código y contacto son opcionales (muchos reales no tienen CI);
+    # si vienen, solo enteros. El vacío nunca es duplicado (ver repositorio).
+    for campo, visible in (("ci", "CI"), ("codigo_estudiante", "código"),
+                           ("contacto", "contacto")):
+        if datos[campo] and not datos[campo].isdigit():
+            raise ValueError(f"{visible} no válido: solo números.")
     siglas = [c.sigla for c in carrera_repository.listar_activos(db_path)]
     if datos["carrera"] not in siglas:
         raise ValueError(f"Carrera no válida. Use una de: {', '.join(siglas)}.")
@@ -488,7 +494,7 @@ CLAVE_FECHA_LIMITE = "fecha_limite_requisitos"
 FLAGS_REQUISITOS = ("materias_en_orden", "carpeta_cancelada",
                     "carta_renovacion", "horas_becarias")
 
-# Nombre claro de cada parámetro para el reporte "en riesgo".
+# Nombre claro de cada parámetro (lista de faltantes en texto).
 NOMBRES_PARAMETROS = {
     "horas_becarias": "horas becarias",
     "materias_en_orden": "materias en orden",
@@ -500,9 +506,9 @@ NOMBRES_PARAMETROS = {
 def parametros_faltantes(estado: str, seg) -> list[str]:
     """Parámetros incumplidos, en texto claro (vacía si cumple todo).
 
-    Es LA regla que pinta las filas en rojo (ver incumple_requisitos) y
-    la que usa el reporte "en riesgo": `seg` None equivale a todo en
-    falso; Baja/Inactivo nunca tiene faltantes. Función pura (sin BD).
+    Es LA regla que pinta las filas en rojo (ver incumple_requisitos):
+    `seg` None equivale a todo en falso; Baja/Inactivo nunca tiene
+    faltantes. Función pura (sin BD).
     """
     if (estado or "").strip() == "Baja/Inactivo":
         return []
@@ -571,54 +577,6 @@ def incumple_requisitos(estado: str, seg, fecha_limite: str | None,
         return False
     # Misma regla que parametros_faltantes(): con o sin seguimiento.
     return bool(parametros_faltantes(estado, seg))
-
-
-# ---------------------------------------------------------------------------
-# Datos de ejemplo para desarrollo (seed idempotente; cubre los 10 tipos
-# oficiales para probar el filtro por categoría).
-# Sirven para probar el listado y el futuro filtro por carrera.
-# ---------------------------------------------------------------------------
-_DATOS_EJEMPLO = [
-    # (nombres, apellidos, ci, codigo, carrera, contacto, tipo, estado, %ant, horas, mat, carpeta, carta, ingreso, condicion)
-    ("Beymar", "Condori Quispe", "8412035", "23718", "IAU", "71234501", "Beca Excelencia Académica", "Activo", "100%", True, True, True, True, "I-2024", "Renovación"),
-    ("Ana", "Quispe Ticona", "9021456", "24512", "IAU", "71234502", "Beca Económica Social Renovación", "Activo", "0%", False, False, False, False, "II-2024", "Renovación"),
-    ("Diego", "Apaza Mamani", "7351892", "23801", "IAU", "71234503", "Beca Económica Social Nuevas", "Activo", "50%", True, False, False, True, "I-2025", "Renovación"),
-    ("Lucía", "Mamani Flores", "6890234", "24105", "DTEX", "71234504", "Beca Personal Administrativo", "Activo", "50%", True, True, False, True, "II-2025", "Nueva"),
-    ("José", "Ticona Huanca", "7745120", "24177", "DTEX", "71234505", "Beca Honorífica Directorio", "Activo", "100%", True, True, True, False, "I-2026", "Renovación"),
-    ("Elena", "Paredes Quispe", "6534891", "24230", "DTEX", "71234506", "Beca Social Ministerio de Educación Renovación", "En renovación", "0%", False, True, False, False, "II-2026", "Nueva"),
-    ("Marco", "Choquehuanca Paredes", "5982103", "22987", "DER", "71234507", "Beca Excelencia Académica", "En renovación", "100%", False, True, False, False, "I-2024", "Renovación"),
-    ("Camila", "Vargas Ríos", "8127465", "23112", "DER", "71234508", "Beca Convenio Interinstitucional Renovación", "Activo", "50%", True, True, True, True, "II-2024", "Renovación"),
-    ("Miguel", "Huanca Copa", "7452309", "25034", "LGYH", "71234509", "Beca Convenio Interinstitucional Nuevas", "Activo", "50%", True, False, True, True, "I-2025", "Nueva"),
-    ("Paola", "Ríos Fernández", "6981342", "25108", "LGYH", "71234510", "Beca Personal Administrativo", "Activo", "100%", True, True, True, True, "II-2025", "Renovación"),
-    ("Luis", "Copa Ticona", "8234567", "25241", "LGYH", "71234511", "Beca Honorífica Directorio", "Baja/Inactivo", "0%", False, False, False, True, "I-2026", "Nueva"),
-    ("Andrea", "Quispe Mamani", "7348912", "26019", "SIS", "71234512", "Beca Social Ministerio de Educación Renovación", "Activo", "100%", True, True, False, True, "II-2026", "Nueva"),
-    ("Daniel", "Fernández Choque", "6872345", "26177", "SIS", "71234513", "Plan Beca Marketing Renovación", "Activo", "50%", False, True, False, False, "I-2024", "Renovación"),
-    ("Carolina", "Paredes Flores", "7981234", "27045", "CPU", "71234514", "Plan Beca Marketing Nuevas", "Activo", "100%", True, True, True, True, "I-2025", "Nueva"),
-    ("Javier", "Ticona Ríos", "6456789", "27190", "CPU", "71234515", "Beca Económica Social Renovación", "En renovación", "0%", False, False, False, False, "II-2025", "Renovación"),
-]
-
-
-def asegurar_datos_ejemplo(db_path: Path = DB_PATH) -> int:
-    """Inserta los ejemplos si la tabla está vacía. Retorna cuántos insertó."""
-    if becario_repository.contar_becarios(db_path) > 0:
-        return 0
-    for (nombres, apellidos, ci, codigo, carrera, contacto, tipo_beca, estado,
-         porc_ant, horas, mat, carpeta, carta, ingreso, condicion) in _DATOS_EJEMPLO:
-        becario = becario_repository.insertar_becario(
-            Becario(id=None, nombres=nombres, apellidos=apellidos, ci=ci,
-                    codigo_estudiante=codigo, carrera=carrera, contacto=contacto,
-                    tipo_beca=tipo_beca, estado=estado, gestion_ingreso=ingreso),
-            db_path,
-        )
-        seguimiento_repository.crear_seguimiento(
-            SeguimientoBecario(id=None, becario_id=becario.id, gestion=obtener_gestion_actual(),
-                               porcentaje_anterior=porc_ant, porcentaje_gestion=porc_ant,
-                               condicion=condicion,
-                               horas_becarias=horas, materias_en_orden=mat,
-                               carpeta_cancelada=carpeta, carta_renovacion=carta),
-            db_path,
-        )
-    return len(_DATOS_EJEMPLO)
 
 
 def completar_tipos_vacios(db_path: Path = DB_PATH) -> int:

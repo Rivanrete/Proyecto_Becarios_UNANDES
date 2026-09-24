@@ -102,16 +102,22 @@ def buscar_por_ci(ci: str, db_path: Path = DB_PATH) -> Optional[Becario]:
 
 
 def existe_ci(ci: str, excluir_id: Optional[int] = None, db_path: Path = DB_PATH) -> bool:
-    """True si el CI pertenece a un becario distinto de excluir_id."""
+    """True si el CI pertenece a un becario distinto de excluir_id.
+
+    El vacío nunca duplica (muchos reales no tienen CI).
+    """
+    clave = (ci or "").strip()
+    if not clave:
+        return False
     conn = get_connection(db_path)
     try:
         if excluir_id is None:
             fila = conn.execute(
-                "SELECT id FROM becario WHERE ci = ?", (ci.strip(),)
+                "SELECT id FROM becario WHERE ci = ?", (clave,)
             ).fetchone()
         else:
             fila = conn.execute(
-                "SELECT id FROM becario WHERE ci = ? AND id != ?", (ci.strip(), excluir_id)
+                "SELECT id FROM becario WHERE ci = ? AND id != ?", (clave, excluir_id)
             ).fetchone()
     finally:
         conn.close()
